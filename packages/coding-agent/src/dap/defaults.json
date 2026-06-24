@@ -1,10 +1,32 @@
 {
 	"gdb": {
 		"command": "gdb",
-		"args": ["-i", "dap"],
-		"languages": ["c", "cpp", "rust"],
-		"fileTypes": [".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".rs"],
-		"rootMarkers": ["Makefile", "CMakeLists.txt", "Cargo.toml", "compile_commands.json"],
+		"args": [
+			"-i",
+			"dap"
+		],
+		"languages": [
+			"c",
+			"cpp",
+			"rust"
+		],
+		"fileTypes": [
+			".c",
+			".cc",
+			".cpp",
+			".cxx",
+			".h",
+			".hh",
+			".hpp",
+			".hxx",
+			".rs"
+		],
+		"rootMarkers": [
+			"Makefile",
+			"CMakeLists.txt",
+			"Cargo.toml",
+			"compile_commands.json"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopOnEntry": true,
@@ -17,9 +39,32 @@
 	"lldb-dap": {
 		"command": "lldb-dap",
 		"args": [],
-		"languages": ["c", "cpp", "objc", "swift", "rust", "zig"],
-		"fileTypes": [".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".swift", ".rs", ".zig"],
-		"rootMarkers": ["Package.swift", "Cargo.toml", "Makefile", "CMakeLists.txt", "build.zig"],
+		"languages": [
+			"c",
+			"cpp",
+			"objc",
+			"swift",
+			"rust",
+			"zig"
+		],
+		"fileTypes": [
+			".c",
+			".cc",
+			".cpp",
+			".cxx",
+			".m",
+			".mm",
+			".swift",
+			".rs",
+			".zig"
+		],
+		"rootMarkers": [
+			"Package.swift",
+			"Cargo.toml",
+			"Makefile",
+			"CMakeLists.txt",
+			"build.zig"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopOnEntry": true
@@ -30,10 +75,31 @@
 	},
 	"codelldb": {
 		"command": "codelldb",
-		"args": ["--port", "0"],
-		"languages": ["c", "cpp", "rust", "zig"],
-		"fileTypes": [".c", ".cc", ".cpp", ".cxx", ".rs", ".zig"],
-		"rootMarkers": ["Cargo.toml", "CMakeLists.txt", "Makefile", "compile_commands.json", "build.zig"],
+		"args": [
+			"--port",
+			"0"
+		],
+		"languages": [
+			"c",
+			"cpp",
+			"rust",
+			"zig"
+		],
+		"fileTypes": [
+			".c",
+			".cc",
+			".cpp",
+			".cxx",
+			".rs",
+			".zig"
+		],
+		"rootMarkers": [
+			"Cargo.toml",
+			"CMakeLists.txt",
+			"Makefile",
+			"compile_commands.json",
+			"build.zig"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopOnEntry": true
@@ -44,10 +110,22 @@
 	},
 	"debugpy": {
 		"command": "python",
-		"args": ["-m", "debugpy.adapter"],
-		"languages": ["python"],
-		"fileTypes": [".py"],
-		"rootMarkers": ["pyproject.toml", "setup.py", "requirements.txt", "Pipfile"],
+		"args": [
+			"-m",
+			"debugpy.adapter"
+		],
+		"languages": [
+			"python"
+		],
+		"fileTypes": [
+			".py"
+		],
+		"rootMarkers": [
+			"pyproject.toml",
+			"setup.py",
+			"requirements.txt",
+			"Pipfile"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"justMyCode": false,
@@ -60,11 +138,20 @@
 	},
 	"dlv": {
 		"command": "dlv",
-		"args": ["dap"],
+		"args": [
+			"dap"
+		],
 		"connectMode": "socket",
-		"languages": ["go"],
-		"fileTypes": [".go"],
-		"rootMarkers": ["go.mod", "go.sum"],
+		"languages": [
+			"go"
+		],
+		"fileTypes": [
+			".go"
+		],
+		"rootMarkers": [
+			"go.mod",
+			"go.sum"
+		],
 		"acceptsDirectoryProgram": true,
 		"launchDefaults": {
 			"request": "launch",
@@ -79,9 +166,23 @@
 	"js-debug-adapter": {
 		"command": "js-debug-adapter",
 		"args": [],
-		"languages": ["javascript", "typescript"],
-		"fileTypes": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
-		"rootMarkers": ["package.json", "tsconfig.json", "jsconfig.json"],
+		"languages": [
+			"javascript",
+			"typescript"
+		],
+		"fileTypes": [
+			".js",
+			".jsx",
+			".ts",
+			".tsx",
+			".mjs",
+			".cjs"
+		],
+		"rootMarkers": [
+			"package.json",
+			"tsconfig.json",
+			"jsconfig.json"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"type": "pwa-node",
@@ -94,10 +195,25 @@
 	},
 	"netcoredbg": {
 		"command": "netcoredbg",
-		"args": ["--interpreter=vscode"],
-		"languages": ["csharp", "fsharp"],
-		"fileTypes": [".cs", ".csx", ".fs", ".fsx"],
-		"rootMarkers": ["*.sln", "*.csproj", "*.fsproj", "global.json"],
+		"args": [
+			"--interpreter=vscode"
+		],
+		"languages": [
+			"csharp",
+			"fsharp"
+		],
+		"fileTypes": [
+			".cs",
+			".csx",
+			".fs",
+			".fsx"
+		],
+		"rootMarkers": [
+			"*.sln",
+			"*.csproj",
+			"*.fsproj",
+			"global.json"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopAtEntry": true
@@ -109,9 +225,20 @@
 	"kotlin-debug-adapter": {
 		"command": "kotlin-debug-adapter",
 		"args": [],
-		"languages": ["kotlin"],
-		"fileTypes": [".kt", ".kts"],
-		"rootMarkers": ["build.gradle", "build.gradle.kts", "pom.xml", "settings.gradle", "settings.gradle.kts"],
+		"languages": [
+			"kotlin"
+		],
+		"fileTypes": [
+			".kt",
+			".kts"
+		],
+		"rootMarkers": [
+			"build.gradle",
+			"build.gradle.kts",
+			"pom.xml",
+			"settings.gradle",
+			"settings.gradle.kts"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"mainClass": "",
@@ -123,10 +250,24 @@
 	},
 	"rdbg": {
 		"command": "rdbg",
-		"args": ["--open", "--command", "--"],
-		"languages": ["ruby"],
-		"fileTypes": [".rb", ".rake", ".gemspec"],
-		"rootMarkers": ["Gemfile", "Rakefile", ".ruby-version"],
+		"args": [
+			"--open",
+			"--command",
+			"--"
+		],
+		"languages": [
+			"ruby"
+		],
+		"fileTypes": [
+			".rb",
+			".rake",
+			".gemspec"
+		],
+		"rootMarkers": [
+			"Gemfile",
+			"Rakefile",
+			".ruby-version"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"type": "rdbg"
@@ -139,9 +280,17 @@
 	"php-debug-adapter": {
 		"command": "php-debug-adapter",
 		"args": [],
-		"languages": ["php"],
-		"fileTypes": [".php", ".phtml"],
-		"rootMarkers": ["composer.json", "composer.lock"],
+		"languages": [
+			"php"
+		],
+		"fileTypes": [
+			".php",
+			".phtml"
+		],
+		"rootMarkers": [
+			"composer.json",
+			"composer.lock"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopOnEntry": true
@@ -153,9 +302,17 @@
 	"bash-debug-adapter": {
 		"command": "bash-debug-adapter",
 		"args": [],
-		"languages": ["bash", "shell"],
-		"fileTypes": [".sh", ".bash"],
-		"rootMarkers": [".git"],
+		"languages": [
+			"bash",
+			"shell"
+		],
+		"fileTypes": [
+			".sh",
+			".bash"
+		],
+		"rootMarkers": [
+			".git"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"type": "bashdb",
@@ -168,10 +325,19 @@
 	},
 	"dart-debug-adapter": {
 		"command": "dart",
-		"args": ["debug_adapter"],
-		"languages": ["dart"],
-		"fileTypes": [".dart"],
-		"rootMarkers": ["pubspec.yaml", "pubspec.lock"],
+		"args": [
+			"debug_adapter"
+		],
+		"languages": [
+			"dart"
+		],
+		"fileTypes": [
+			".dart"
+		],
+		"rootMarkers": [
+			"pubspec.yaml",
+			"pubspec.lock"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopOnEntry": true
@@ -182,10 +348,23 @@
 	},
 	"flutter-debug-adapter": {
 		"command": "dart",
-		"args": ["debug_adapter", "--flutter-sdk-path", ""],
-		"languages": ["dart"],
-		"fileTypes": [".dart"],
-		"rootMarkers": ["pubspec.yaml", "android", "ios", "lib/main.dart"],
+		"args": [
+			"debug_adapter",
+			"--flutter-sdk-path",
+			""
+		],
+		"languages": [
+			"dart"
+		],
+		"fileTypes": [
+			".dart"
+		],
+		"rootMarkers": [
+			"pubspec.yaml",
+			"android",
+			"ios",
+			"lib/main.dart"
+		],
 		"launchDefaults": {
 			"request": "launch"
 		},
@@ -196,9 +375,19 @@
 	"elixir-ls-debugger": {
 		"command": "elixir-ls-debugger",
 		"args": [],
-		"languages": ["elixir"],
-		"fileTypes": [".ex", ".exs", ".heex", ".eex"],
-		"rootMarkers": ["mix.exs", "mix.lock"],
+		"languages": [
+			"elixir"
+		],
+		"fileTypes": [
+			".ex",
+			".exs",
+			".heex",
+			".eex"
+		],
+		"rootMarkers": [
+			"mix.exs",
+			"mix.lock"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"type": "mix_task",
@@ -210,20 +399,33 @@
 		}
 	},
 	"powershell": {
-		"command": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+		"command": "pwsh",
 		"args": [
-			"-NoLogo", "-NoProfile", "-NonInteractive",
-			"-Command", "Import-Module 'C:\\Users\\brock\\Documents\\github\\PowerShellEditorServices\\module\\PowerShellEditorServices\\PowerShellEditorServices.psd1'; Start-EditorServices -Stdio -DebugServiceOnly -HostName OMP -HostProfileId OMP -HostVersion 1.0.0 -LogLevel Warning -SessionDetailsPath $env:TEMP\\pses-dap-session.json -BundledModulesPath C:\\Users\\brock\\Documents\\github\\PowerShellEditorServices\\module"
+			"-NoLogo",
+			"-NoProfile",
+			"-NonInteractive",
+			"-EncodedCommand",
+			"SQBtAHAAbwByAHQALQBNAG8AZAB1AGwAZQAgAC0ATgBhAG0AZQAgACIAQwA6AFwAVQBzAGUAcgBzAFwAYgByAG8AYwBrAFwARABvAGMAdQBtAGUAbgB0AHMAXABnAGkAdABoAHUAYgBcAFAAbwB3AGUAcgBTAGgAZQBsAGwARQBkAGkAdABvAHIAUwBlAHIAdgBpAGMAZQBzAFwAbQBvAGQAdQBsAGUAXABQAG8AdwBlAHIAUwBoAGUAbABsAEUAZABpAHQAbwByAFMAZQByAHYAaQBjAGUAcwBcAFAAbwB3AGUAcgBTAGgAZQBsAGwARQBkAGkAdABvAHIAUwBlAHIAdgBpAGMAZQBzAC4AcABzAGQAMQAiACAALQBGAG8AcgBjAGUAOwAgAFMAdABhAHIAdAAtAEUAZABpAHQAbwByAFMAZQByAHYAaQBjAGUAcwAgAC0AUwB0AGQAaQBvACAALQBEAGUAYgB1AGcAUwBlAHIAdgBpAGMAZQBPAG4AbAB5ACAALQBIAG8AcwB0AE4AYQBtAGUAIABPAE0AUAAgAC0ASABvAHMAdABQAHIAbwBmAGkAbABlAEkAZAAgAE8ATQBQACAALQBIAG8AcwB0AFYAZQByAHMAaQBvAG4AIAAxAC4AMAAuADAAIAAtAEwAbwBnAEwAZQB2AGUAbAAgAFcAYQByAG4AaQBuAGcAIAAtAEIAdQBuAGQAbABlAGQATQBvAGQAdQBsAGUAcwBQAGEAdABoACAAIgBDADoAXABVAHMAZQByAHMAXABiAHIAbwBjAGsAXABEAG8AYwB1AG0AZQBuAHQAcwBcAGcAaQB0AGgAdQBiAFwAUABvAHcAZQByAFMAaABlAGwAbABFAGQAaQB0AG8AcgBTAGUAcgB2AGkAYwBlAHMAXABtAG8AZAB1AGwAZQAiAA=="
 		],
-		"languages": ["powershell"],
-		"fileTypes": [".ps1", ".psm1", ".psd1", ".ps1xml"],
-		"rootMarkers": [".git"],
+		"languages": [
+			"powershell"
+		],
+		"fileTypes": [
+			".ps1",
+			".psm1",
+			".psd1",
+			".ps1xml"
+		],
+		"rootMarkers": [
+			".git"
+		],
 		"launchDefaults": {
 			"request": "launch",
 			"stopOnEntry": false
 		},
 		"attachDefaults": {
 			"request": "attach"
-		}
+		},
+		"detached": false
 	}
 }

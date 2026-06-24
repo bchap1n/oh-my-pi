@@ -28,6 +28,7 @@ function normalizeAdapterConfig(config: unknown): DapAdapterConfig | null {
 		launchDefaults: normalizeObject(config.launchDefaults),
 		attachDefaults: normalizeObject(config.attachDefaults),
 		acceptsDirectoryProgram: config.acceptsDirectoryProgram === true,
+		detached: config.detached === false ? false : undefined,
 		...(connectMode ? { connectMode } : {}),
 	};
 }
@@ -66,6 +67,7 @@ export function resolveAdapter(adapterName: string, cwd: string): DapResolvedAda
 		attachDefaults: config.attachDefaults ?? {},
 		connectMode: config.connectMode ?? "stdio",
 		acceptsDirectoryProgram: config.acceptsDirectoryProgram === true,
+		detached: config.detached !== false,
 	};
 }
 
