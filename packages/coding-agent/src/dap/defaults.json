@@ -208,5 +208,22 @@
 		"attachDefaults": {
 			"request": "attach"
 		}
+	},
+	"powershell": {
+		"command": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+		"args": [
+			"-NoLogo", "-NoProfile", "-NonInteractive",
+			"-Command", "Import-Module 'C:\\Users\\brock\\Documents\\github\\PowerShellEditorServices\\module\\PowerShellEditorServices\\PowerShellEditorServices.psd1'; Start-EditorServices -Stdio -DebugServiceOnly -HostName OMP -HostProfileId OMP -HostVersion 1.0.0 -LogLevel Warning -SessionDetailsPath $env:TEMP\\pses-dap-session.json -BundledModulesPath C:\\Users\\brock\\Documents\\github\\PowerShellEditorServices\\module"
+		],
+		"languages": ["powershell"],
+		"fileTypes": [".ps1", ".psm1", ".psd1", ".ps1xml"],
+		"rootMarkers": [".git"],
+		"launchDefaults": {
+			"request": "launch",
+			"stopOnEntry": false
+		},
+		"attachDefaults": {
+			"request": "attach"
+		}
 	}
 }
