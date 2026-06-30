@@ -45,8 +45,23 @@ function mockFigmaRegistration(onRegistration: (payload: Record<string, unknown>
 	};
 }
 
+async function completeLocalOAuthCallback(url: string): Promise<void> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 20; attempt++) {
+		try {
+			const response = await fetch(url);
+			await response.text();
+			return;
+		} catch (error) {
+			lastError = error;
+			await Bun.sleep(5);
+		}
+	}
+	throw lastError;
+}
+
 describe("mcp oauth flow", () => {
-	it("uses Codex client name for dynamic client registration", async () => {
+	it("uses oh-my-pi client name for dynamic client registration", async () => {
 		let registrationPayload: Record<string, unknown> | null = null;
 
 		const flow = new MCPOAuthFlow(
@@ -64,12 +79,12 @@ describe("mcp oauth flow", () => {
 		const authUrl = new URL(url);
 
 		expect(registrationPayload).not.toBeNull();
-		expect((registrationPayload as { client_name?: string } | null)?.client_name).toBe("Codex");
+		expect((registrationPayload as { client_name?: string } | null)?.client_name).toBe("oh-my-pi");
 		expect(authUrl.searchParams.get("client_id")).toBe("registered-client-id");
 		expect(authUrl.searchParams.get("state")).toBe("test-state");
 	});
 
-	it("defaults prompt=consent so reauth can switch accounts despite an active browser session", async () => {
+	it("omits prompt by default so provider-specific reauth pages can use returning grants", async () => {
 		const flow = new MCPOAuthFlow(
 			{
 				authorizationUrl: "https://provider.example/authorize",
@@ -80,6 +95,22 @@ describe("mcp oauth flow", () => {
 		);
 
 		const { url } = await flow.generateAuthUrl("test-state", "http://127.0.0.1:53180/callback");
+
+		expect(new URL(url).searchParams.has("prompt")).toBe(false);
+	});
+
+	it("defaults prompt=consent when offline_access is requested", async () => {
+		const flow = new MCPOAuthFlow(
+			{
+				authorizationUrl: "https://provider.example/authorize",
+				tokenUrl: "https://provider.example/token",
+				clientId: "client-id",
+				scopes: "openid offline_access",
+			},
+			{},
+		);
+
+		const { url } = await flow.generateAuthUrl("test-state", "http://127.0.0.1:53184/callback");
 
 		expect(new URL(url).searchParams.get("prompt")).toBe("consent");
 	});
@@ -152,7 +183,7 @@ describe("mcp oauth flow", () => {
 					observedRedirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 					const state = authUrl.searchParams.get("state") ?? "";
 					queueMicrotask(() => {
-						void fetch(`${observedRedirectUri}?code=test-code&state=${state}`);
+						void completeLocalOAuthCallback(`${observedRedirectUri}?code=test-code&state=${state}`);
 					});
 				},
 				signal: AbortSignal.timeout(1_000),
@@ -192,7 +223,7 @@ describe("mcp oauth flow", () => {
 					const redirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 					const state = authUrl.searchParams.get("state") ?? "";
 					queueMicrotask(() => {
-						void fetch(`${redirectUri}?code=test-code&state=${state}`);
+						void completeLocalOAuthCallback(`${redirectUri}?code=test-code&state=${state}`);
 					});
 				},
 				signal: AbortSignal.timeout(1_000),
@@ -228,7 +259,7 @@ describe("mcp oauth flow", () => {
 					const redirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 					const state = authUrl.searchParams.get("state") ?? "";
 					queueMicrotask(() => {
-						void fetch(`${redirectUri}?code=test-code&state=${state}`);
+						void completeLocalOAuthCallback(`${redirectUri}?code=test-code&state=${state}`);
 					});
 				},
 				signal: AbortSignal.timeout(1_000),
@@ -265,7 +296,9 @@ describe("mcp oauth flow", () => {
 					observedRedirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 					const state = authUrl.searchParams.get("state") ?? "";
 					queueMicrotask(() => {
-						void fetch(`http://localhost:14568/slack/oauth_redirect?code=test-code&state=${state}`);
+						void completeLocalOAuthCallback(
+							`http://localhost:14568/slack/oauth_redirect?code=test-code&state=${state}`,
+						);
 					});
 				},
 				signal: AbortSignal.timeout(1_000),
@@ -305,7 +338,7 @@ describe("mcp oauth flow", () => {
 					observedRedirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 					const state = authUrl.searchParams.get("state") ?? "";
 					queueMicrotask(() => {
-						void fetch(`http://localhost:14571/?code=test-code&state=${state}`);
+						void completeLocalOAuthCallback(`http://localhost:14571/?code=test-code&state=${state}`);
 					});
 				},
 				signal: AbortSignal.timeout(1_000),
@@ -343,7 +376,9 @@ describe("mcp oauth flow", () => {
 					observedRedirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 					const state = authUrl.searchParams.get("state") ?? "";
 					queueMicrotask(() => {
-						void fetch(`http://localhost:14570/slack/oauth_redirect?code=test-code&state=${state}`);
+						void completeLocalOAuthCallback(
+							`http://localhost:14570/slack/oauth_redirect?code=test-code&state=${state}`,
+						);
 					});
 				},
 				signal: AbortSignal.timeout(1_000),

@@ -33,7 +33,7 @@ import type {
 import { applyCompatOverrides } from "./apply";
 
 /** GLM coding-plan SKUs idle for minutes mid-reasoning; see `streamIdleTimeoutMs`. */
-const GLM_CODING_PLAN_MODEL_PATTERN = /^glm-5(?:[.-]|$)/i;
+const GLM_CODING_PLAN_MODEL_PATTERN = /(^|\/)glm-5(?:[.-]|$)/i;
 const GLM_CODING_PLAN_STREAM_IDLE_TIMEOUT_MS = 600_000;
 /** Direct DeepSeek reasoning models stall between thinking and answer phases. */
 const DEEPSEEK_REASONING_STREAM_IDLE_TIMEOUT_MS = 300_000;
@@ -98,20 +98,21 @@ function resolveReasoningDisableMode(
 	}
 }
 
-function detectStreamMarkupHealingPattern(
-	provider: string,
-	modelId: string,
-): OpenAIStreamMarkupHealingPattern | undefined {
-	if (MINIMAX_PROVIDER_OR_ID_PATTERN.test(provider) || MINIMAX_PROVIDER_OR_ID_PATTERN.test(modelId)) {
-		return "thinking";
-	}
+/**
+ * Pick the leaked-markup healer for an OpenAI-compatible visible-text stream.
+ * Kimi chat-template tokens and DeepSeek DSML envelopes need their dedicated
+ * tool-call grammars; every other model defaults to `"thinking"`. All patterns
+ * run the generic thinking healer, so leaked reasoning idioms (e.g. a Gemini
+ * ` ```thinking ` fence on OpenRouter) are always recovered from `delta.content`.
+ */
+function detectStreamMarkupHealingPattern(provider: string, modelId: string): OpenAIStreamMarkupHealingPattern {
 	if (provider === "kimi-code" || provider === "moonshot" || /kimi[-/_.]?k2/i.test(modelId)) {
 		return "kimi";
 	}
 	if (isDeepseekModelIdOrName(modelId) && DSML_HEALING_PROVIDERS.has(provider)) {
 		return "dsml";
 	}
-	return undefined;
+	return "thinking";
 }
 
 /**
