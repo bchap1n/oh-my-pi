@@ -17,6 +17,7 @@ import { TempDir } from "@oh-my-pi/pi-utils";
 import * as snapcompact from "@oh-my-pi/snapcompact";
 
 const HANDOFF_SECRET = "HANDOFF_SECRET_TOKEN_12345";
+const UNRENDERABLE_SNAPCOMPACT_TEXT = "\uE000\uE001\uE002\uE003\uE004\uE005\uE006\uE007\uE008\uE009";
 
 describe("AgentSession handoff", () => {
 	// Immutable across the whole file: the model registry's synchronous bundled-model
@@ -451,7 +452,11 @@ describe("AgentSession handoff", () => {
 		const fixedPreparation: compactionModule.CompactionPreparation = {
 			firstKeptEntryId: lastEntryId,
 			messagesToSummarize: [
-				{ role: "user", content: [{ type: "text", text: "中文内容".repeat(100) }], timestamp: 1 },
+				{
+					role: "user",
+					content: [{ type: "text", text: UNRENDERABLE_SNAPCOMPACT_TEXT.repeat(100) }],
+					timestamp: 1,
+				},
 			],
 			turnPrefixMessages: [],
 			recentMessages: [],
@@ -478,7 +483,11 @@ describe("AgentSession handoff", () => {
 		const fixedPreparation: compactionModule.CompactionPreparation = {
 			firstKeptEntryId: lastEntryId,
 			messagesToSummarize: [
-				{ role: "user", content: [{ type: "text", text: "中文内容".repeat(100) }], timestamp: 1 },
+				{
+					role: "user",
+					content: [{ type: "text", text: UNRENDERABLE_SNAPCOMPACT_TEXT.repeat(100) }],
+					timestamp: 1,
+				},
 			],
 			turnPrefixMessages: [],
 			recentMessages: [],
@@ -515,7 +524,7 @@ describe("AgentSession handoff", () => {
 			(event): event is Extract<AgentSessionEvent, { type: "notice" }> =>
 				event.type === "notice" &&
 				event.source === "compaction" &&
-				event.message.startsWith("snapcompact disabled: high non-ASCII rate detected"),
+				event.message.startsWith("snapcompact disabled: unsupported characters for selected snapcompact font"),
 		);
 		expect(downgradeNotice?.message).toContain("using context-full auto-compaction instead.");
 	});

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import type { ImageContent, MessageAttribution, ServiceTier, TextContent } from "@oh-my-pi/pi-ai";
+import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@oh-my-pi/pi-ai";
 
 export const CURRENT_SESSION_VERSION = 3;
 
@@ -73,7 +73,7 @@ export interface ModelChangeEntry extends SessionEntryBase {
 
 export interface ServiceTierChangeEntry extends SessionEntryBase {
 	type: "service_tier_change";
-	serviceTier: ServiceTier | null;
+	serviceTier: ServiceTierByFamily | null;
 }
 
 export interface CompactionEntry<T = unknown> extends SessionEntryBase {
@@ -236,6 +236,10 @@ export interface UsageStatistics {
 	output: number;
 	cacheRead: number;
 	cacheWrite: number;
+	totalTokens: number;
+	orchestrationInput: number;
+	orchestrationOutput: number;
+	orchestrationCacheRead: number;
 	premiumRequests: number;
 	cost: number;
 }

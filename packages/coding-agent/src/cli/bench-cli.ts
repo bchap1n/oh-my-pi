@@ -10,26 +10,32 @@ import type {
 	Model,
 	ProviderSessionState,
 	ServiceTier,
+	ServiceTierByFamily,
 	SimpleStreamOptions,
 } from "@oh-my-pi/pi-ai";
-import { streamSimple } from "@oh-my-pi/pi-ai";
-import { buildModelProviderPriorityRank, type CanonicalModelVariant } from "@oh-my-pi/pi-catalog/identity";
+import { resolveModelServiceTier, streamSimple } from "@oh-my-pi/pi-ai";
+import { buildModelProviderPriorityRank } from "@oh-my-pi/pi-catalog/identity";
 import { replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
 import { formatDuration, getProjectDir } from "@oh-my-pi/pi-utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
-import { type CanonicalModelQueryOptions, ModelRegistry } from "../config/model-registry";
+import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
 	formatModelString,
 	getModelMatchPreferences,
 	resolveCliModel,
 } from "../config/model-resolver";
-import { resolveServiceTierSetting } from "../config/service-tier";
+import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
 import { Settings } from "../config/settings";
 import benchPrompt from "../prompts/bench.md" with { type: "text" };
 import { discoverAuthStorage, loadCliExtensionProviders } from "../sdk";
-import { resolveThinkingLevelForModel, shouldDisableReasoning, toReasoningEffort } from "../thinking";
+import {
+	concreteThinkingLevel,
+	resolveThinkingLevelForModel,
+	shouldDisableReasoning,
+	toReasoningEffort,
+} from "../thinking";
 
 const DEFAULT_RUNS = 10;
 const DEFAULT_PAR = 4;
@@ -54,9 +60,6 @@ export interface BenchModelRegistry {
 	getAll(): Model<Api>[];
 	getApiKey(model: Model<Api>, sessionId?: string): Promise<string | undefined>;
 	resolver(model: ApiKeyResolverModel, sessionId?: string): ApiKeyResolver;
-	resolveCanonicalModel?(canonicalId: string, options?: CanonicalModelQueryOptions): Model<Api> | undefined;
-	getCanonicalVariants?(canonicalId: string, options?: CanonicalModelQueryOptions): CanonicalModelVariant[];
-	getCanonicalId?(model: Model<Api>): string | undefined;
 	hasConfiguredAuth?(model: Model<Api>): boolean;
 }
 
@@ -106,8 +109,8 @@ export interface BenchSummary {
 	maxTokens: number;
 	models: BenchModelReport[];
 	failures: number;
-	/** Requested service tier passed to every request; absent when none was requested. Scoped tiers (`openai-only`/`claude-only`) may be dropped per-provider downstream. */
-	serviceTier?: ServiceTier;
+	/** Requested per-family service tiers, resolved per model before reaching the wire. */
+	serviceTierByFamily?: ServiceTierByFamily;
 }
 
 type BenchStreamSimple = (
@@ -439,13 +442,7 @@ function resolveAuthenticatedAlternative(
 		seen.add(key);
 		if (modelRegistry.hasConfiguredAuth?.(candidate)) authenticated.push(candidate);
 	};
-	// Canonical variants link the same logical model across providers even when
-	// ids differ (e.g. fireworks `gpt-oss-20b` <-> openrouter `openai/gpt-oss-20b`).
-	const canonicalId = modelRegistry.getCanonicalId?.(model);
-	if (canonicalId) {
-		for (const variant of modelRegistry.getCanonicalVariants?.(canonicalId) ?? []) consider(variant.model);
-	}
-	// Same-id fallback for entries outside the canonical index.
+	// Same-id fallback for equivalent entries under providers with configured auth.
 	for (const candidate of modelRegistry.getAll()) {
 		if (candidate.id === model.id) consider(candidate);
 	}
@@ -485,7 +482,7 @@ function resolveBenchModels(
 		resolved.push({
 			selector,
 			model,
-			thinking: resolveThinkingLevelForModel(model, result.thinkingLevel),
+			thinking: resolveThinkingLevelForModel(model, concreteThinkingLevel(result.thinkingLevel)),
 		});
 	}
 	if (errors.length > 0) {
@@ -518,12 +515,18 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 	const runtime = await (deps.createRuntime ?? createDefaultRuntime)();
 	try {
 		const targets = resolveBenchModels(command.models, runtime.modelRegistry, runtime.settings, writeStderr);
-		// Explicit `--service-tier` wins; otherwise fall back to the configured
-		// `serviceTier` setting (`none`/unset omits the wire field). Scope-aware
-		// gating to the model's provider happens downstream in the provider layer.
-		const serviceTierValue = command.flags.serviceTier ?? runtime.settings?.get("serviceTier");
-		const serviceTier = serviceTierValue ? resolveServiceTierSetting(serviceTierValue, undefined) : undefined;
-		if (!json && serviceTier) writeStdout(`${chalk.dim(`service tier: ${serviceTier}`)}\n`);
+		// Explicit `--service-tier` (a single value broadcast across families) wins;
+		// otherwise fall back to the configured per-family `tier.*` settings. Each
+		// model resolves its own family's tier below before reaching the wire.
+		const flagTier = command.flags.serviceTier ? serviceTierSettingToTier(command.flags.serviceTier) : undefined;
+		const serviceTierByFamily = command.flags.serviceTier
+			? serviceTierForAllFamilies(flagTier)
+			: buildServiceTierByFamily(
+					runtime.settings?.get("tier.openai") ?? "none",
+					runtime.settings?.get("tier.anthropic") ?? "none",
+					runtime.settings?.get("tier.google") ?? "none",
+				);
+		if (!json && flagTier) writeStdout(`${chalk.dim(`service tier: ${flagTier}`)}\n`);
 		const reports: BenchModelReport[] = [];
 		for (const { selector, model, thinking } of targets) {
 			if (!json) {
@@ -564,7 +567,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 						maxTokens,
 						reasoning: toReasoningEffort(thinking),
 						disableReasoning: shouldDisableReasoning(thinking) ? true : undefined,
-						serviceTier,
+						serviceTier: resolveModelServiceTier(serviceTierByFamily, model),
 					},
 					streamFn,
 					now,
@@ -606,7 +609,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 			reports.push(buildModelReport(selector, model, thinking, results));
 		}
 		const failures = reports.reduce((sum, report) => sum + report.results.filter(result => !result.ok).length, 0);
-		const summary: BenchSummary = { runs, maxTokens, models: reports, failures, serviceTier };
+		const summary: BenchSummary = { runs, maxTokens, models: reports, failures, serviceTierByFamily };
 		if (json) {
 			writeStdout(`${JSON.stringify(summary, null, 2)}\n`);
 		} else if (reports.length > 1 || runs > 1) {

@@ -385,15 +385,39 @@ export function resolveShape(model?: ShapeTarget, variant?: ShapeVariantName | "
 	return priceShape(ideal?.frameSize ? { ...base, frameSize: ideal.frameSize } : base, family);
 }
 
+const CJK_HEAVY_MIN_WIDE_CHARS = 8;
+const CJK_HEAVY_WIDE_RATIO = 0.25;
+
+function isCjkHeavyText(text: string): boolean {
+	const chars = normalizedInputChars(text);
+	let graphicChars = 0;
+	let wideChars = 0;
+	for (const ch of chars) {
+		if (ch === " " || ch === DIM_ON || ch === DIM_OFF || ch === NEWLINE_GLYPH) continue;
+		const cp = ch.codePointAt(0);
+		if (cp === undefined || UNRENDERABLE.test(ch)) continue;
+		graphicChars++;
+		if (isWideCodePoint(cp)) wideChars++;
+	}
+	return wideChars >= CJK_HEAVY_MIN_WIDE_CHARS && wideChars / graphicChars >= CJK_HEAVY_WIDE_RATIO;
+}
+
 /**
- * Pick the frame shape for `text` without changing the selected shape.
- *
- * Glyph-level Silver fallback happens during normalization/rendering, so this
- * helper exists for callers that need a text-aware API name while preserving
- * explicit and provider-selected shapes.
+ * Pick the frame shape for `text`. Explicit variants remain forced. Auto first
+ * resolves the model/provider default, then selects the Silver CJK grid when
+ * the default font cannot safely render the text or wide CJK glyphs dominate
+ * the transcript and Silver can render it safely.
  */
-export function resolveShapeForText(_text: string, model?: ShapeTarget, variant?: ShapeVariantName | "auto"): Shape {
-	return resolveShape(model, variant);
+export function resolveShapeForText(text: string, model?: ShapeTarget, variant?: ShapeVariantName | "auto"): Shape {
+	const shape = resolveShape(model, variant);
+	if (variant && variant !== "auto") return shape;
+	const silver = resolveShape(model, "silver16-bw");
+	if (!scanRenderability(text, { shape }).isSafe) {
+		return scanRenderability(text, { shape: silver }).isSafe ? silver : shape;
+	}
+	return shape.font !== "silver" && isCjkHeavyText(text) && scanRenderability(text, { shape: silver }).isSafe
+		? silver
+		: shape;
 }
 
 // ============================================================================
@@ -423,6 +447,29 @@ export const HQ_EDGE_FRAMES = 3;
  *  cap, billed at +5% margin (ceil(4784 * 1.05)). Keeps the overflow guard from
  *  undercounting a high-res archive at the raised {@link MAX_FRAMES_DEFAULT}. */
 export const FRAME_TOKEN_ESTIMATE = 5024;
+
+/** Conservative upper bound for one persisted frame's base64 payload. The
+ *  measured high-res Anthropic `8x13`/`11on16` PNG frames sit around 159 KB;
+ *  170 KB leaves margin for denser glyph pages without permitting multi-MB
+ *  standing request bodies at large context windows. */
+export const FRAME_DATA_BYTES_ESTIMATE = 170_000;
+
+/** Maximum snapcompact image base64 carried in every rebuilt provider request.
+ *  Above this, provider backends can accept the HTTP body but fail mid-stream
+ *  with opaque 5xx errors. Keep this independent from visual-token budgeting:
+ *  a 1M-token model can afford 70 images on paper, but not the resulting
+ *  ~11 MB JSON payload on every turn. */
+export const FRAME_DATA_BYTES_BUDGET = 3_000_000;
+
+/** Frame-count cap implied by {@link FRAME_DATA_BYTES_BUDGET}. */
+export function maxFramesForDataBudget(maxFrameDataBytes: number = FRAME_DATA_BYTES_BUDGET): number {
+	return Math.max(1, Math.floor(maxFrameDataBytes / FRAME_DATA_BYTES_ESTIMATE));
+}
+
+/** Base64 byte length for persisted snapcompact frames. */
+export function frameDataBytes(frames: readonly Pick<Frame, "data">[]): number {
+	return frames.reduce((sum, frame) => sum + frame.data.length, 0);
+}
 
 /**
  * Per-request image-count budgets by provider id. These cap how many images an
@@ -1542,6 +1589,54 @@ export function renderabilityProbeText(
 	return serialized;
 }
 
+/** Options for reconstructing a persisted snapcompact archive into prompt blocks. */
+export interface HistoryBlockOptions {
+	/** Hard cap on image base64 bytes attached to one rebuilt provider request. */
+	maxFrameDataBytes?: number;
+}
+
+function formatFrameDataBytes(bytes: number): string {
+	if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+	if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+	return `${bytes} B`;
+}
+
+function imagesWithinBudget(
+	archive: Archive,
+	maxFrameDataBytes: number | undefined,
+): { images: ImageContent[]; omittedFrames: number; omittedBytes: number } {
+	if (maxFrameDataBytes === undefined) {
+		return { images: images(archive), omittedFrames: 0, omittedBytes: 0 };
+	}
+
+	let usedBytes = 0;
+	let omittedFrames = 0;
+	let omittedBytes = 0;
+	const keptNewestFirst: Frame[] = [];
+	for (let index = archive.frames.length - 1; index >= 0; index--) {
+		const frame = archive.frames[index];
+		if (!frame) continue;
+		const bytes = frame.data.length;
+		if (usedBytes + bytes > maxFrameDataBytes) {
+			omittedFrames++;
+			omittedBytes += bytes;
+			continue;
+		}
+		usedBytes += bytes;
+		keptNewestFirst.push(frame);
+	}
+	keptNewestFirst.reverse();
+	return { images: images({ ...archive, frames: keptNewestFirst }), omittedFrames, omittedBytes };
+}
+
+function omittedFrameNotice(omittedFrames: number, omittedBytes: number): string {
+	return [
+		"-------------- snapcompact image middle omitted",
+		`${omittedFrames.toLocaleString()} archived image frame${omittedFrames === 1 ? "" : "s"} (${formatFrameDataBytes(omittedBytes)} base64) exceeded the per-request snapcompact payload budget. The compacted summary and visible text edges remain available.`,
+		"--------------",
+	].join("\n");
+}
+
 /** Convert archive frames into LLM image blocks (oldest first). */
 export function images(archive: Archive): ImageContent[] {
 	return archive.frames.map(frame => ({
@@ -1555,23 +1650,38 @@ export function images(archive: Archive): ImageContent[] {
  *  the oldest text region, the imaged middle, then the newest text region.
  *  Runtime-only; reconstructed from {@link Archive} on each context rebuild
  *  instead of persisted on the session entry. */
-export function historyBlocks(archive: Archive): (TextContent | ImageContent)[] {
+export function historyBlocks(archive: Archive, options: HistoryBlockOptions = {}): (TextContent | ImageContent)[] {
 	const blocks: (TextContent | ImageContent)[] = [];
-	const hasImages = archive.frames.length > 0;
+	const budgeted = imagesWithinBudget(archive, options.maxFrameDataBytes);
+	const hasImages = budgeted.images.length > 0;
+	const hasOmittedImages = budgeted.omittedFrames > 0;
 	if (archive.textHead) {
-		const suffix = hasImages ? "\n-------------- imaged middle below\n" : "";
+		const suffix = hasImages
+			? "\n-------------- imaged middle below\n"
+			: hasOmittedImages
+				? `\n${omittedFrameNotice(budgeted.omittedFrames, budgeted.omittedBytes)}\n`
+				: "";
 		blocks.push({ type: "text", text: toPlainText(archive.textHead) + suffix });
+	} else if (hasOmittedImages && !hasImages) {
+		blocks.push({ type: "text", text: omittedFrameNotice(budgeted.omittedFrames, budgeted.omittedBytes) });
 	}
-	blocks.push(...images(archive));
+	// Omitted frames are the OLDEST archived images: the byte budget keeps the
+	// newest tail frames, so the gap notice precedes the kept images to keep the
+	// reconstructed blocks oldest-to-newest.
+	if (hasImages && hasOmittedImages) {
+		blocks.push({ type: "text", text: omittedFrameNotice(budgeted.omittedFrames, budgeted.omittedBytes) });
+	}
+	blocks.push(...budgeted.images);
 	if (archive.textTail) {
 		const prefix = hasImages
 			? "-------------- imaged middle above\n"
-			: archive.truncatedChars > 0
+			: archive.truncatedChars > 0 || hasOmittedImages
 				? "\n-------------- middle history omitted above\n"
 				: "";
 		const tail = prefix + toPlainText(archive.textTail);
-		if (blocks.length > 0 && blocks[blocks.length - 1]?.type === "text") {
-			(blocks[blocks.length - 1] as TextContent).text += tail;
+		const lastBlock = blocks[blocks.length - 1];
+		if (lastBlock?.type === "text") {
+			lastBlock.text += tail;
 		} else {
 			blocks.push({ type: "text", text: tail });
 		}

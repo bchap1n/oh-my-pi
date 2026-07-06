@@ -1,5 +1,6 @@
 export { once, untilAborted } from "./abortable";
 export * from "./async";
+export * from "./binary";
 export * from "./color";
 export * from "./dirs";
 export * from "./env";
@@ -28,6 +29,7 @@ export * from "./snowflake";
 export * from "./stream";
 export * from "./tab-spacing";
 export * from "./temp";
+export * from "./tls-fetch";
 export * from "./type-guards";
 export * from "./which";
 
