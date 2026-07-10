@@ -80,6 +80,7 @@ import {
 import type { ChatCompletionCreateParamsStreaming } from "./openai-chat-wire";
 import type { InputItem } from "./openai-codex/request-transformer";
 import type {
+	Response as OpenAIResponse,
 	ResponseContentPartAddedEvent,
 	ResponseCreateParamsStreaming,
 	ResponseCustomToolCall,
@@ -122,7 +123,8 @@ export interface OpenAIRequestSetupModel extends OpenAIModelIdentity {
 	compat?: Pick<ResolvedOpenAISharedCompat, "promptCacheSessionHeader">;
 }
 
-export interface OpenAIResponsesCacheOptions {
+/** Cache identity controls shared by OpenAI-family transports. */
+export interface OpenAICacheOptions {
 	cacheRetention?: CacheRetention;
 	sessionId?: string;
 	promptCacheKey?: string;
@@ -172,6 +174,14 @@ function applyCoreWeaveProjectHeader(headers: Record<string, string>): void {
 	if (projectHeaders) {
 		headers[COREWEAVE_PROJECT_HEADER] = projectHeaders[COREWEAVE_PROJECT_HEADER];
 	}
+}
+
+function setHeaderIfAbsent(headers: Record<string, string>, name: string, value: string): void {
+	const normalizedName = name.toLowerCase();
+	for (const existingName in headers) {
+		if (existingName.toLowerCase() === normalizedName) return;
+	}
+	headers[name] = value;
 }
 
 export function resolveOpenAIRequestSetup(
@@ -256,11 +266,11 @@ export function resolveOpenAIRequestSetup(
 	}
 
 	if (options.openAISessionId && model.provider === "openai") {
-		headers.session_id ??= options.openAISessionId;
-		headers["x-client-request-id"] ??= options.openAISessionId;
+		setHeaderIfAbsent(headers, "session_id", options.openAISessionId);
+		setHeaderIfAbsent(headers, "x-client-request-id", options.openAISessionId);
 	}
 	if (options.promptCacheSessionId && model.compat?.promptCacheSessionHeader) {
-		headers[model.compat.promptCacheSessionHeader] ??= options.promptCacheSessionId;
+		setHeaderIfAbsent(headers, model.compat.promptCacheSessionHeader, options.promptCacheSessionId);
 	}
 
 	if (options.defaultBaseUrl !== undefined) {
@@ -367,7 +377,8 @@ export function calculateOpenAIUsageAccounting(accounting: OpenAIUsageAccounting
 	};
 }
 
-export function normalizeOpenAIResponsesPromptCacheKey(sessionId: string | undefined): string | undefined {
+/** Normalize a cache identity to the wire limit accepted by OpenAI-family providers. */
+export function normalizeOpenAIPromptCacheKey(sessionId: string | undefined): string | undefined {
 	return normalizeOpenAIStableId(sessionId, 64, "pc_");
 }
 
@@ -375,20 +386,21 @@ export function normalizeOpenRouterResponsesSessionId(sessionId: string | undefi
 	return normalizeOpenAIStableId(sessionId, 256, "session_");
 }
 
-export function getOpenAIResponsesPromptCacheKey(options: OpenAIResponsesCacheOptions | undefined): string | undefined {
+/** Resolve a prompt-cache identity, falling back to the provider session unless caching is disabled. */
+export function getOpenAIPromptCacheKey(options: OpenAICacheOptions | undefined): string | undefined {
 	if (resolveCacheRetention(options?.cacheRetention) === "none") return undefined;
-	return normalizeOpenAIResponsesPromptCacheKey(options?.promptCacheKey ?? options?.sessionId);
+	return normalizeOpenAIPromptCacheKey(options?.promptCacheKey ?? options?.sessionId);
 }
 
 export function getOpenAIResponsesRoutingSessionId(
-	options: Pick<OpenAIResponsesCacheOptions, "cacheRetention" | "sessionId"> | undefined,
+	options: Pick<OpenAICacheOptions, "cacheRetention" | "sessionId"> | undefined,
 ): string | undefined {
 	if (resolveCacheRetention(options?.cacheRetention) === "none") return undefined;
-	return normalizeOpenAIResponsesPromptCacheKey(options?.sessionId);
+	return normalizeOpenAIPromptCacheKey(options?.sessionId);
 }
 
 export function getOpenRouterResponsesSessionId(
-	options: Pick<OpenAIResponsesCacheOptions, "cacheRetention" | "sessionId"> | undefined,
+	options: Pick<OpenAICacheOptions, "cacheRetention" | "sessionId"> | undefined,
 ): string | undefined {
 	if (resolveCacheRetention(options?.cacheRetention) === "none") return undefined;
 	return normalizeOpenRouterResponsesSessionId(options?.sessionId);
@@ -694,13 +706,19 @@ export interface OpenAICompatPolicy {
 	};
 }
 
-function mapOpenAIReasoningEffort(
+/**
+ * Map a user-facing effort to the provider wire value: explicit compat
+ * override first, then the model's baked `thinking.effortMap`, else identity.
+ * Shared by the chat-completions/Responses policy resolver and the Codex
+ * request transformer.
+ */
+export function mapOpenAIReasoningEffort(
 	model: Pick<Model, "thinking">,
-	compat: OpenAICompatPolicyCompat,
+	compat: { reasoningEffortMap?: Partial<Record<Effort, string>> } | undefined,
 	effort: string,
 ): string {
 	const level = effort as Effort;
-	return compat.reasoningEffortMap?.[level] ?? model.thinking?.effortMap?.[level] ?? effort;
+	return compat?.reasoningEffortMap?.[level] ?? model.thinking?.effortMap?.[level] ?? effort;
 }
 
 function isImplicitDisableWhenNotRequested(disableMode: OpenAIReasoningDisableMode): boolean {
@@ -1041,7 +1059,7 @@ export function shouldRetryWithoutStrictTools(
 	const messageParts = [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
 		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
 		.join("\n");
-	return /wrong_api_format|mixed values for 'strict'|tool[s]?\b.*strict|\bstrict\b.*tool|tool parameters? schema|invalid schema for function/i.test(
+	return /wrong_api_format|mixed values for 'strict'|tool[s]?\b.*strict|\bstrict\b.*tool|tool parameters? schema|invalid schema for function|structured[_ -]?outputs?\b[^\n]*(?:not (?:supported|available|enabled)|unsupported)|(?:not support|unsupported)[^\n]*structured[_ -]?outputs?\b/i.test(
 		messageParts,
 	);
 }
@@ -1683,6 +1701,14 @@ export function appendReasoningSummaryPart(
 	item.summary.push(part);
 }
 
+/** Chooses the final reasoning text without discarding content already streamed into the block. */
+export function finalizeReasoningThinking(item: ResponseReasoningItem, streamedThinking: string): string {
+	const summaryThinking = item.summary?.map(part => part.text).join("\n\n") ?? "";
+	if (summaryThinking) return summaryThinking;
+	const contentThinking = item.content?.[0]?.type === "reasoning_text" ? (item.content[0].text ?? "") : "";
+	return contentThinking || streamedThinking || "";
+}
+
 export function appendReasoningSummaryTextDelta(
 	item: ResponseReasoningItem,
 	block: ThinkingContent,
@@ -1798,13 +1824,25 @@ export function finalizeCustomToolCallInputDone(block: ResponsesToolCallBlock, i
 	block.arguments = { input };
 }
 
+type OpenAIResponsesTerminalStreamEvent =
+	| Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>
+	| { type: "response.done"; response?: Partial<OpenAIResponse> };
+
+function getOpenAIResponsesTerminalEvent(event: ResponseStreamEvent): OpenAIResponsesTerminalStreamEvent | undefined {
+	const type = (event as { type?: unknown }).type;
+	return type === "response.completed" || type === "response.incomplete" || type === "response.done"
+		? (event as OpenAIResponsesTerminalStreamEvent)
+		: undefined;
+}
+
 export interface ProcessResponsesStreamOptions {
 	onFirstToken?: () => void;
 	onOutputItemDone?: (item: ResponseOutputItem) => void;
 	/**
-	 * Called when a terminal `response.completed` or `response.incomplete` event
-	 * is successfully processed. Only invoked on the successful-completion path;
-	 * thrown failure (`response.failed`) and cancellation paths never call this.
+	 * Called when a terminal `response.completed`, `response.incomplete`, or
+	 * `response.done` event is successfully processed. Only invoked on the
+	 * successful-completion path; thrown failure (`response.failed`) and
+	 * cancellation paths never call this.
 	 * Used by callers to detect premature stream closure (i.e. the stream ended
 	 * without a recognized terminal event).
 	 */
@@ -2039,6 +2077,7 @@ export async function processResponsesStream<TApi extends Api>(
 	let sawFirstToken = false;
 
 	for await (const event of openaiStream) {
+		const terminalEvent = getOpenAIResponsesTerminalEvent(event);
 		if (event.type === "response.created") {
 			output.responseId = event.response.id;
 		} else if (event.type === "response.output_item.added") {
@@ -2194,12 +2233,6 @@ export async function processResponsesStream<TApi extends Api>(
 					? lookupOpenItem({ output_index: event.output_index, item_id: item.id ?? item.call_id })
 					: lookupOpenItem({ output_index: event.output_index, item_id: item.id });
 			if (item.type === "reasoning") {
-				const thinking =
-					item.summary?.length > 0
-						? item.summary.map(part => part.text).join("\n\n")
-						: item.content?.[0]?.type === "reasoning_text"
-							? (item.content[0].text ?? "")
-							: "";
 				// Prefer the routed entry; the bare itemId find misroutes when ids are
 				// absent (`undefined === undefined` matches the FIRST thinking block) and
 				// misses entirely when the done-event id drifts from the added-event id.
@@ -2210,12 +2243,12 @@ export async function processResponsesStream<TApi extends Api>(
 								| ThinkingContent
 								| undefined);
 				if (reasoningBlock) {
-					reasoningBlock.thinking = thinking;
+					reasoningBlock.thinking = finalizeReasoningThinking(item, reasoningBlock.thinking);
 					reasoningBlock.thinkingSignature = JSON.stringify(item);
 					stream.push({
 						type: "thinking_end",
 						contentIndex: contentIndexOf(reasoningBlock),
-						content: thinking,
+						content: reasoningBlock.thinking,
 						partial: output,
 					});
 				}
@@ -2297,8 +2330,8 @@ export async function processResponsesStream<TApi extends Api>(
 				closeOpenItem(event.output_index, item.id, entry, item.call_id, prefixedFunctionCallItemKey(item.call_id));
 				stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
 			}
-		} else if (event.type === "response.completed" || event.type === "response.incomplete") {
-			const response = event.response;
+		} else if (terminalEvent) {
+			const response = terminalEvent.response;
 			finalizePendingResponsesToolCalls(output);
 			if (response?.id) {
 				output.responseId = response.id;
@@ -2336,7 +2369,7 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 			promoteResponsesToolUseStopReason(output, (response as { end_turn?: boolean } | undefined)?.end_turn);
 			options?.onCompleted?.();
-			// `response.completed`/`response.incomplete` is the last event of a
+			// `response.completed`/`response.incomplete`/`response.done` is the last event of a
 			// Responses stream. Stop pulling instead of waiting for the server to
 			// close the connection: misbehaving providers keep the socket open
 			// after the terminal event, which would park this loop until the idle

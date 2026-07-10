@@ -821,6 +821,62 @@ export function openaiModelManagerOptions(config?: OpenAIModelManagerConfig): Mo
 	};
 }
 
+/** First-party gpt-5.6 SKUs that accept `reasoning: { mode: "pro" }` on the Responses APIs. */
+const OPENAI_PRO_REASONING_BASE_IDS: Record<string, true> = {
+	"gpt-5.6-luna": true,
+	"gpt-5.6-sol": true,
+	"gpt-5.6-terra": true,
+};
+const OPENAI_PRO_REASONING_PROVIDERS: Record<string, true> = { openai: true, "openai-codex": true };
+
+/**
+ * A row this generator pass owns: one of the derived `gpt-5.6-*-pro` alias ids
+ * on `openai`/`openai-codex` that carries the generated `reasoningMode` marker.
+ * A real upstream model occupying the same id has no `reasoningMode` and is
+ * never touched.
+ */
+function isGeneratedOpenAIProReasoningAlias(model: ModelSpec<Api>): boolean {
+	return (
+		OPENAI_PRO_REASONING_PROVIDERS[model.provider] === true &&
+		model.reasoningMode !== undefined &&
+		model.id.endsWith("-pro") &&
+		OPENAI_PRO_REASONING_BASE_IDS[model.id.slice(0, -"-pro".length)] === true
+	);
+}
+
+/**
+ * Re-derive the generated pro-reasoning aliases (`gpt-5.6-*-pro`) for the
+ * first-party `openai`/`openai-codex` gpt-5.6 rows. Each alias inherits the
+ * base row's metadata, requests the base wire id via `requestModelId`, and
+ * sets `reasoningMode: "pro"` so Responses-family request builders emit
+ * `reasoning: { mode: "pro" }`. Called by the models.json generator after all
+ * sources merge: stale copies of the owned aliases (previous snapshot) are
+ * dropped and re-projected from the current base rows so alias metadata always
+ * tracks the base, while a real upstream model that occupies an alias id wins
+ * and suppresses the projection.
+ */
+export function projectOpenAIProReasoningAliases(models: readonly ModelSpec<Api>[]): ModelSpec<Api>[] {
+	const kept = models.filter(model => !isGeneratedOpenAIProReasoningAlias(model));
+	const ids = new Set(kept.map(model => `${model.provider}/${model.id}`));
+	const out = [...kept];
+	for (const model of kept) {
+		if (!OPENAI_PRO_REASONING_PROVIDERS[model.provider]) continue;
+		if (!OPENAI_PRO_REASONING_BASE_IDS[model.id]) continue;
+		const aliasId = `${model.id}-pro`;
+		const aliasKey = `${model.provider}/${aliasId}`;
+		if (ids.has(aliasKey)) continue;
+		ids.add(aliasKey);
+		out.push({
+			...model,
+			id: aliasId,
+			name: `${model.name} Pro`,
+			requestModelId: model.id,
+			reasoningMode: "pro",
+		});
+	}
+	return out;
+}
+
 // ---------------------------------------------------------------------------
 // 2. Groq
 // ---------------------------------------------------------------------------
@@ -983,6 +1039,7 @@ export const XAI_OAUTH_CURATED_MODELS: readonly XAICuratedModel[] = [
 		input: ["text", "image"],
 	},
 	{ id: "grok-4.3", contextWindow: 1_000_000, name: "Grok 4.3", input: ["text", "image"] },
+	{ id: "grok-4.5", contextWindow: 500_000, name: "Grok 4.5", input: ["text", "image"] },
 	// grok-4.20-multi-agent-0309 is text-only per the bundled catalog; omit `input` for the default.
 	{ id: "grok-4.20-multi-agent-0309", contextWindow: 2_000_000, name: "Grok 4.20 (Multi-Agent)" },
 	{
@@ -3032,11 +3089,25 @@ export interface FetchLiteLLMRichModelsOptions<TApi extends Api> {
 }
 
 type LiteLLMRichModelEntry = Record<string, unknown>;
+type LiteLLMRichEndpointModel<TApi extends Api> = {
+	model: ModelSpec<TApi>;
+	supportsVision: unknown;
+	supportsReasoning: unknown;
+	hasContextWindow: boolean;
+	hasMaxTokens: boolean;
+	hasToolMetadata: boolean;
+	hasSupportedOpenAIParams: boolean;
+};
 
 const LITELLM_RICH_ENDPOINTS = ["/model_group/info", "/v2/model/info", "/model/info", "/v1/model/info"] as const;
 export const OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW = 128_000;
 export const OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS = 32_768;
 const UNKNOWN_PROXY_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
+const LITELLM_UNUSABLE_SENTINEL_IDS: Record<string, true> = {
+	"all-team-models": true,
+	"all-proxy-models": true,
+	"no-default-models": true,
+};
 
 export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim().replace(/\/+$/g, "");
@@ -3142,11 +3213,59 @@ function getSupportedOpenAIParams(entry: LiteLLMRichModelEntry): string[] | unde
 	return value.flatMap(item => (typeof item === "string" ? [item] : []));
 }
 
+function isLiteLLMUnusableSentinelPlaceholder(entry: LiteLLMRichModelEntry): boolean {
+	const modelGroup = toNonEmptyString(entry.model_group);
+	const id = toNonEmptyString(entry.id);
+	if (
+		(modelGroup === undefined || LITELLM_UNUSABLE_SENTINEL_IDS[modelGroup] !== true) &&
+		(id === undefined || LITELLM_UNUSABLE_SENTINEL_IDS[id] !== true)
+	) {
+		return false;
+	}
+	const providers = entry.providers;
+	if (providers !== undefined && (!Array.isArray(providers) || providers.length > 0)) {
+		return false;
+	}
+	const modelName = toNonEmptyString(entry.model_name);
+	if (modelName && LITELLM_UNUSABLE_SENTINEL_IDS[modelName] !== true) {
+		return false;
+	}
+	if (id && LITELLM_UNUSABLE_SENTINEL_IDS[id] !== true) {
+		return false;
+	}
+	const backendModel = toNonEmptyString(getLiteLLMParams(entry)?.model);
+	if (backendModel && LITELLM_UNUSABLE_SENTINEL_IDS[backendModel] !== true) {
+		return false;
+	}
+	if (
+		toPositiveNumber(getLiteLLMMetadataValue(entry, "max_input_tokens"), null) !== null ||
+		toPositiveNumber(getLiteLLMMetadataValue(entry, "max_output_tokens"), null) !== null
+	) {
+		return false;
+	}
+	if (
+		getLiteLLMMetadataValue(entry, "supports_vision") === true ||
+		getLiteLLMMetadataValue(entry, "supports_reasoning") === true ||
+		getLiteLLMMetadataValue(entry, "supports_function_calling") === true ||
+		getLiteLLMMetadataValue(entry, "supports_tools") === true
+	) {
+		return false;
+	}
+	const supportedOpenAIParams = getSupportedOpenAIParams(entry);
+	if (supportedOpenAIParams && supportedOpenAIParams.length > 0) {
+		return false;
+	}
+	return true;
+}
+
 function mapLiteLLMRichEntry<TApi extends Api>(
 	entry: LiteLLMRichModelEntry,
 	options: FetchLiteLLMRichModelsOptions<TApi>,
 	runtimeBaseUrl: string,
 ): ModelSpec<TApi> | null {
+	if (isLiteLLMUnusableSentinelPlaceholder(entry)) {
+		return null;
+	}
 	const id = getLiteLLMRichModelId(entry);
 	if (!id) {
 		return null;
@@ -3211,7 +3330,7 @@ async function fetchLiteLLMRichEndpoint<TApi extends Api>(
 	managementBaseUrl: string,
 	runtimeBaseUrl: string,
 	signal?: AbortSignal,
-): Promise<ModelSpec<TApi>[] | null> {
+): Promise<{ models: LiteLLMRichEndpointModel<TApi>[]; incompleteVisionMetadata: boolean } | null> {
 	const fetchImpl = discoveryFetch(options.fetch);
 	const requestHeaders: Record<string, string> = {
 		Accept: "application/json",
@@ -3243,17 +3362,39 @@ async function fetchLiteLLMRichEndpoint<TApi extends Api>(
 	if (!entries || entries.length === 0) {
 		return null;
 	}
-	const deduped = new Map<string, ModelSpec<TApi>>();
+	const deduped = new Map<string, LiteLLMRichEndpointModel<TApi>>();
+	let incompleteVisionMetadata = false;
 	for (const entry of entries) {
 		const model = mapLiteLLMRichEntry(entry, options, runtimeBaseUrl);
 		if (model) {
-			deduped.set(model.id, model);
+			const supportsVision = getLiteLLMMetadataValue(entry, "supports_vision");
+			const supportsReasoning = getLiteLLMMetadataValue(entry, "supports_reasoning");
+			const supportsFunctionCalling = getLiteLLMMetadataValue(entry, "supports_function_calling");
+			const supportedOpenAIParams = getSupportedOpenAIParams(entry);
+			if (supportsVision !== true && supportsVision !== false) {
+				incompleteVisionMetadata = true;
+			}
+			deduped.set(model.id, {
+				model,
+				supportsVision,
+				supportsReasoning,
+				hasContextWindow: toPositiveNumber(getLiteLLMMetadataValue(entry, "max_input_tokens"), null) !== null,
+				hasMaxTokens: toPositiveNumber(getLiteLLMMetadataValue(entry, "max_output_tokens"), null) !== null,
+				hasToolMetadata:
+					supportsFunctionCalling === true ||
+					supportsFunctionCalling === false ||
+					supportedOpenAIParams !== undefined,
+				hasSupportedOpenAIParams: supportedOpenAIParams !== undefined,
+			});
 		}
 	}
 	if (deduped.size === 0) {
 		return null;
 	}
-	return Array.from(deduped.values()).sort((left, right) => left.id.localeCompare(right.id));
+	return {
+		models: Array.from(deduped.values()).sort((left, right) => left.model.id.localeCompare(right.model.id)),
+		incompleteVisionMetadata,
+	};
 }
 
 export async function fetchLiteLLMRichModels<TApi extends Api>(
@@ -3265,13 +3406,55 @@ export async function fetchLiteLLMRichModels<TApi extends Api>(
 		return null;
 	}
 	const fetchModels = async (signal?: AbortSignal): Promise<ModelSpec<TApi>[] | null> => {
+		const deduped = new Map<string, LiteLLMRichEndpointModel<TApi>>();
 		for (const endpoint of LITELLM_RICH_ENDPOINTS) {
-			const models = await fetchLiteLLMRichEndpoint(endpoint, options, managementBaseUrl, runtimeBaseUrl, signal);
-			if (models) {
-				return models;
+			const result = await fetchLiteLLMRichEndpoint(endpoint, options, managementBaseUrl, runtimeBaseUrl, signal);
+			if (!result) {
+				continue;
+			}
+			const hadPriorModels = deduped.size > 0;
+			for (const next of result.models) {
+				const existing = deduped.get(next.model.id);
+				if (!existing) {
+					if (!hadPriorModels) {
+						deduped.set(next.model.id, next);
+					}
+					continue;
+				}
+				const model: ModelSpec<TApi> = {
+					...existing.model,
+					name: next.model.name === next.model.id ? existing.model.name : next.model.name,
+					contextWindow: next.hasContextWindow ? next.model.contextWindow : existing.model.contextWindow,
+					maxTokens: next.hasMaxTokens ? next.model.maxTokens : existing.model.maxTokens,
+					input:
+						next.supportsVision === true || next.supportsVision === false
+							? next.model.input
+							: existing.model.input,
+					reasoning: typeof next.supportsReasoning === "boolean" ? next.model.reasoning : existing.model.reasoning,
+					compat: next.hasSupportedOpenAIParams ? next.model.compat : existing.model.compat,
+				};
+				if (next.hasToolMetadata) {
+					model.supportsTools = next.model.supportsTools;
+				}
+				deduped.set(next.model.id, { ...next, model });
+			}
+			let hasIncompleteVisionMetadata = false;
+			for (const entry of deduped.values()) {
+				if (entry.supportsVision !== true && entry.supportsVision !== false) {
+					hasIncompleteVisionMetadata = true;
+					break;
+				}
+			}
+			if (!hasIncompleteVisionMetadata) {
+				break;
 			}
 		}
-		return null;
+		if (deduped.size === 0) {
+			return null;
+		}
+		return Array.from(deduped.values())
+			.map(entry => entry.model)
+			.sort((left, right) => left.id.localeCompare(right.id));
 	};
 	if (options.signal !== undefined) {
 		return fetchModels(options.signal);
@@ -3286,18 +3469,20 @@ export function litellmModelManagerOptions(
 	const baseUrl = config?.baseUrl ?? Bun.env.LITELLM_BASE_URL ?? "http://localhost:4000/v1";
 	return {
 		providerId: "litellm",
-		// rich-v2 invalidates rows cached before reseller usage-suffix stripping
-		// (stale display names like `MiniMax-M3 (3x usage)`); bump the version
-		// whenever the mappers below change, or warm authoritative caches keep
-		// serving pre-change rows for the full TTL.
-		cacheProviderId: `litellm:rich-v2:${Bun.hash(baseUrl).toString(36)}`,
+		// rich-v4 invalidates rows cached before LiteLLM ids gained bundled
+		// reference fallback and before discovery continued past `/model_group/info`
+		// when that endpoint omitted vision metadata. Earlier versions handled
+		// reseller usage-suffix stripping and placeholder-only `all-team-models`
+		// filtering; bump the version whenever the mappers below change, or warm
+		// authoritative caches keep serving pre-change rows for the full TTL.
+		cacheProviderId: `litellm:rich-v4:${Bun.hash(baseUrl).toString(36)}`,
 		// litellm is a local-only proxy and is never bundled in models.json (that
 		// would leak the machine's localhost catalog). Prefer the proxy's richer
-		// management metadata, then fall back to /v1/models and enrich bare ids
-		// against models.dev like the gateway providers (fireworks et al.) do.
+		// management metadata, then enrich ids against models.dev with the bundled
+		// catalog as a fallback before using /v1/models.
 		fetchDynamicModels: async () => {
 			const modelsDevReferences = await loadModelsDevReferences<"openai-completions">(config?.fetch);
-			const resolveReference = (id: string) => modelsDevReferences.get(id);
+			const resolveReference = createReferenceResolver(modelsDevReferences);
 			const richModels = await fetchLiteLLMRichModels({
 				api: "openai-completions",
 				provider: "litellm",
