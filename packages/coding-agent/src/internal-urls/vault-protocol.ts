@@ -566,7 +566,7 @@ export function buildObsidianCliInvocation(
 	switch (parsed.op) {
 		case "search": {
 			const query = requireParam(parsed.params, "q", "search");
-			const args = ["search:context", `query=${query}`];
+			const args = ["search", `query=${query}`];
 			const pathFilter = validateQueryPath(parsed.params, "path");
 			if (pathFilter) args.push(`path=${pathFilter}`);
 			const limit = paramString(parsed.params, "limit");

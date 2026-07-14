@@ -299,7 +299,7 @@ describe("VaultProtocolHandler", () => {
 			wordcount: ["wordcount", "path=Note.md", "vault=Work"],
 			history: ["history", "path=Note.md", "vault=Work"],
 			base: ["base:query", "path=Note.md", "view=Main", "format=md", "vault=Work"],
-			search: ["search:context", "query=plan", "path=Folder", "limit=5", "case", "format=json", "vault=Work"],
+			search: ["search", "query=plan", "path=Folder", "limit=5", "case", "format=json", "vault=Work"],
 			daily: ["daily:read", "vault=Work"],
 			dailyPath: ["daily:path", "vault=Work"],
 			vaultTags: ["tags", "counts", "format=json", "vault=Work"],
@@ -369,8 +369,8 @@ describe("VaultProtocolHandler", () => {
 		await handler.resolve(resourceUrl("vault://?op=search&q=plan"));
 
 		expect(calls).toEqual([
-			["search:context", "query=plan", "format=json"],
-			["search:context", "query=plan", "format=json"],
+			["search", "query=plan", "format=json"],
+			["search", "query=plan", "format=json"],
 		]);
 		expect(spawnSpy).toHaveBeenCalledTimes(2);
 	});

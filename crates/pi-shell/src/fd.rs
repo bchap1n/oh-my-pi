@@ -511,12 +511,14 @@ struct SizeFilter {
 	bytes:    u64,
 }
 
+#[cfg_attr(not(unix), allow(dead_code, reason = "owner matching is unsupported off Unix"))]
 #[derive(Clone, Copy)]
 enum OwnerSide {
 	Include(u32),
 	Exclude(u32),
 }
 
+#[cfg_attr(not(unix), allow(dead_code, reason = "owner matching is unsupported off Unix"))]
 #[derive(Clone, Copy)]
 struct OwnerMatcher {
 	user:  Option<OwnerSide>,
@@ -1175,10 +1177,11 @@ fn matches_owner_filters(filters: &[OwnerMatcher], metadata: Option<&Metadata>) 
 }
 
 #[cfg(not(unix))]
-fn matches_owner_filters(filters: &[OwnerMatcher], _metadata: Option<&Metadata>) -> bool {
+const fn matches_owner_filters(filters: &[OwnerMatcher], _metadata: Option<&Metadata>) -> bool {
 	filters.is_empty()
 }
 
+#[cfg(unix)]
 const fn owner_side_matches(side: OwnerSide, actual: u32) -> bool {
 	match side {
 		OwnerSide::Include(expected) => actual == expected,

@@ -11,6 +11,7 @@ use nix::unistd::User;
 
 use super::{ComparableValue, Matcher, MatcherIO, WalkEntry};
 
+#[cfg_attr(windows, allow(dead_code, reason = "user matching is unsupported on Windows"))]
 pub struct UserMatcher {
 	uid: ComparableValue,
 }

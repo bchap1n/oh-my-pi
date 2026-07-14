@@ -28,6 +28,7 @@ const TEST_ADAPTER: DapResolvedAdapter = {
 	attachDefaults: {},
 	connectMode: "stdio",
 	acceptsDirectoryProgram: false,
+	detached: false,
 };
 
 const DELAYED_UNIX_SOCKET_ADAPTER = `

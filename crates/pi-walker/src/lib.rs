@@ -1815,7 +1815,7 @@ pub fn root_device_id(path: &Path, follow_links: FollowLinks) -> Option<u64> {
 ///
 /// Non-Unix platforms return `None`, making same-filesystem filtering a no-op.
 #[cfg(not(unix))]
-pub fn root_device_id(_path: &Path, _follow_links: FollowLinks) -> Option<u64> {
+pub const fn root_device_id(_path: &Path, _follow_links: FollowLinks) -> Option<u64> {
 	None
 }
 
@@ -1846,7 +1846,7 @@ pub fn is_path_on_root_file_system(
 /// When `root_device` is `None`, this returns true. On non-Unix platforms this
 /// is always true, matching the existing no-op same-filesystem behavior there.
 #[cfg(not(unix))]
-pub fn is_path_on_root_file_system(
+pub const fn is_path_on_root_file_system(
 	_path: &Path,
 	_depth: usize,
 	_follow_links: FollowLinks,
@@ -1876,7 +1876,7 @@ fn is_effective_path_on_root_file_system(
 }
 
 #[cfg(not(unix))]
-fn is_effective_path_on_root_file_system(
+const fn is_effective_path_on_root_file_system(
 	_path: &Path,
 	_depth: usize,
 	_follow_links: FollowLinks,
@@ -2217,7 +2217,7 @@ impl<E> EntryVisitor for CollectVisitor<E> {
 	}
 }
 
-fn root_device_for_options(root: &Path, options: WalkOptions) -> Option<u64> {
+const fn root_device_for_options(root: &Path, options: WalkOptions) -> Option<u64> {
 	if options.same_file_system {
 		root_device_id(root, options.follow_links)
 	} else {
@@ -2312,7 +2312,11 @@ impl DirScratch {
 	}
 
 	#[cfg(not(unix))]
-	fn name<'a>(&'a self, entry: &'a DirEntryRecord) -> &'a OsStr {
+	#[allow(
+		clippy::unused_self,
+		reason = "method shape is shared with the Unix scratch implementation"
+	)]
+	fn name<'a>(&self, entry: &'a DirEntryRecord) -> &'a OsStr {
 		&entry.name
 	}
 }
@@ -4076,7 +4080,7 @@ mod platform {
 				};
 				let name_offset = offset + std::mem::offset_of!(FILE_ID_FULL_DIR_INFORMATION, FileName);
 				let name_len = info.FileNameLength as usize;
-				if name_len % 2 != 0 || name_offset + name_len > buffer.len() {
+				if !name_len.is_multiple_of(2) || name_offset + name_len > buffer.len() {
 					return Err(invalid_data("invalid NtQueryDirectoryFile name length").into());
 				}
 				let name_units: Vec<u16> = buffer[name_offset..name_offset + name_len]
@@ -4132,7 +4136,11 @@ mod platform {
 		}
 	}
 
-	fn file_type_from_attributes(attributes: u32) -> Option<FileType> {
+	#[allow(
+		clippy::unnecessary_wraps,
+		reason = "keeps the Windows helper shape aligned with conditional file-type handling"
+	)]
+	const fn file_type_from_attributes(attributes: u32) -> Option<FileType> {
 		if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 			Some(FileType::Symlink)
 		} else if attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
