@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added OpenAI Codex rate-limit response-header ingestion (`x-codex-{primary,secondary}-*`): every successful response now refreshes the account's usage snapshot, so credential selection blocks an exhausted account and rotates to a sibling before the next request burns a wire 429.
+
+### Changed
+
+- Reworked multi-account credential ranking from lowest-consumption-pace to maximum required drain: accounts are now ordered by `headroom / hoursToReset` (descending) on their binding usage window, so quota that would expire unused at the next reset is burned first and staggered resets land at ~100% utilization. Accounts whose short (5h) window is ≥85% used are demoted behind cooler siblings to avoid imminent mid-session blocks, usage-backed accounts always outrank siblings whose usage fetch failed, and the weighted-random session spread was replaced by deterministic top-ranked selection.
+- Usage header ingestion now bypasses its 60-second throttle when any window reads exhausted, so the credential block lands immediately instead of after one more wire 429.
+
+### Removed
+
+- Fixed empty provider responses (e.g. "Cloud Code Assist API returned an empty response") being classified as non-retryable: `ProviderResponseError` with kind `empty-body` now carries the transient flag, so session retry and configured model-fallback chains engage instead of hard-failing the turn
+- Fixed OpenAI Codex pre-response watchdog timeouts bypassing transport and session retries by giving each request attempt an independent timeout signal while preserving caller aborts as non-retryable ([#5329](https://github.com/can1357/oh-my-pi/issues/5329))
+
 ## [16.5.1] - 2026-07-14
 
 ### Added
