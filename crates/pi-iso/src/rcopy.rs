@@ -472,7 +472,7 @@ fn filetime_set(_path: &Path, _mtime: std::time::SystemTime) -> std::io::Result<
 	Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
 	use std::{
 		fs,
@@ -512,7 +512,6 @@ mod tests {
 		}
 	}
 
-	#[cfg(unix)]
 	#[test]
 	fn git_apply_drains_stderr_while_writing_stdin() {
 		use std::os::unix::fs::PermissionsExt as _;

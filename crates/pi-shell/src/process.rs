@@ -1817,6 +1817,7 @@ const fn platform_process_group_alive(_pgid: i32) -> bool {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(unix)]
 	use super::*;
 
 	/// `kill_process_group` is the last line of defense: even if a future
