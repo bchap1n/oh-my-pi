@@ -134,6 +134,7 @@ async function checkForNewVersion(currentVersion: string): Promise<string | unde
 // embedders need project-level opt-outs for reminder/prelude prompt injection.
 const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	"task.isolation.mode",
+	"task.isolation.apply",
 	"task.isolation.merge",
 	"task.isolation.commits",
 	"task.eager",
@@ -390,7 +391,9 @@ export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSess
 			authStorage: args.authStorage,
 			modelRegistry: args.modelRegistry,
 			agentId,
-			hasUI: false,
+			// Preserve reserve-policy confirmation until ACP capabilities are known
+			// without enabling AskTool or other UI-only session behavior.
+			deferUsageReserveConfirmation: true,
 			enableMCP: false,
 			titleSystemPrompt,
 		});
@@ -833,6 +836,11 @@ export async function buildSessionOptions(
 		cwd: parsed.cwd ?? getProjectDir(),
 		autoApprove: parsed.autoApprove ?? false,
 	};
+	const cliDirs = parsed.addDir ?? [];
+	const settingsDirs = activeSettings.get("workspace.additionalDirectories");
+	if (cliDirs.length > 0 || settingsDirs.length > 0) {
+		options.additionalDirectories = [...new Set([...cliDirs, ...settingsDirs])];
+	}
 	if (parsed.maxTime !== undefined) {
 		options.deadline = Date.now() + parsed.maxTime * 1000;
 	}
