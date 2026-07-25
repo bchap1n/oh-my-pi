@@ -23,7 +23,7 @@ use core_graphics::{
 	geometry::CGPoint,
 };
 #[cfg(not(target_os = "linux"))]
-use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use enigo::{Axis, Button, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage, imageops::FilterType};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -1575,9 +1575,13 @@ fn move_mouse(_input: &mut Enigo, x: i32, y: i32) -> CoreResult<()> {
 	// Win32 absolute input uses normalized coordinates over the virtual desktop;
 	// MOUSEEVENTF_VIRTUALDESK is required for negative origins and secondary
 	// monitors (enigo's default absolute path targets only the primary monitor).
+	// SAFETY: GetSystemMetrics is a Win32 API call that only reads system state.
 	let origin_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+	// SAFETY: GetSystemMetrics is a Win32 API call that only reads system state.
 	let origin_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+	// SAFETY: GetSystemMetrics is a Win32 API call that only reads system state.
 	let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+	// SAFETY: GetSystemMetrics is a Win32 API call that only reads system state.
 	let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
 	if width <= 1 || height <= 1 {
 		return Err(DesktopError::new(
@@ -1602,6 +1606,8 @@ fn move_mouse(_input: &mut Enigo, x: i32, y: i32) -> CoreResult<()> {
 			},
 		},
 	};
+	// SAFETY: SendInput is a Win32 API call that injects synthetic input events;
+	// the INPUT struct is properly initialized above.
 	let sent = unsafe { SendInput(1, &event, size_of::<INPUT>() as i32) };
 	if sent == 1 {
 		Ok(())
