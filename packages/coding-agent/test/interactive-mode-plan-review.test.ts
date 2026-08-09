@@ -394,6 +394,34 @@ describe("InteractiveMode plan review rendering", () => {
 		expect(onInput).toHaveBeenCalledTimes(1);
 	});
 
+	it("promotes the reviewed plan path into plan-mode state before refining", async () => {
+		const resolve = (url: string) =>
+			resolveLocalUrlToPath(url, {
+				getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
+				getSessionId: () => session.sessionManager.getSessionId(),
+			});
+		const oldPlanPath = "local://old-plan.md";
+		const newPlanPath = "local://new-draft-plan.md";
+		await Bun.write(resolve(oldPlanPath), "# Old\n\nold body");
+		await Bun.write(resolve(newPlanPath), "# New\n\nnew body");
+
+		mode.planModeEnabled = true;
+		mode.planModePlanFilePath = oldPlanPath;
+		// State still points at the previously reviewed (older) plan.
+		session.setPlanModeState({ enabled: true, planFilePath: oldPlanPath, workflow: "parallel", reentry: true });
+
+		const feedback = "Refinement feedback:\n- add more detail\n";
+		vi.spyOn(mode, "showPlanReview").mockImplementation(async (_plan, _title, _options, dialogOptions) => {
+			dialogOptions?.onFeedbackChange?.(feedback);
+			return "Refine plan";
+		});
+		vi.spyOn(session, "prompt").mockResolvedValue(undefined as never);
+
+		await mode.handlePlanApproval({ planFilePath: newPlanPath, planExists: true, title: "NEW" });
+
+		expect(session.getPlanModeState()?.planFilePath).toBe(newPlanPath);
+	});
+
 	it("opens the annotation external editor from the real plan review overlay", async () => {
 		const editorPath = path.join(tempDir.path(), "annotation-editor.sh");
 		await Bun.write(
@@ -1850,14 +1878,13 @@ describe("InteractiveMode plan review rendering", () => {
 	// `#approvePlan`'s `finally`. No aborted message_end is required to consume it,
 	// so a stranded flag could otherwise silence the next unrelated abort. One
 	// parametrized case per outcome keeps ok/cancelled/failed each covered.
-	it.each([
-		"ok",
-		"cancelled",
-		"failed",
-	] as const)("B1-B3: Approve and compact context + %s outcome → flag cleared by finally", async outcome => {
-		await approveWithCompact(outcome);
-		expect(session.isPlanInternalAbortPending).toBe(false);
-	});
+	it.each(["ok", "cancelled", "failed"] as const)(
+		"B1-B3: Approve and compact context + %s outcome → flag cleared by finally",
+		async outcome => {
+			await approveWithCompact(outcome);
+			expect(session.isPlanInternalAbortPending).toBe(false);
+		},
+	);
 
 	it("B4: Approve and compact context + handleCompactCommand throws → showError surfaces the failure AND flag cleared by finally before the outer catch", async () => {
 		// `handlePlanApproval` wraps `#approvePlan` in a try/catch
