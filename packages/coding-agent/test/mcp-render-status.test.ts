@@ -46,6 +46,8 @@ function makeConnection(): MCPServerConnection {
 		name: "sentry",
 		config: { command: "sentry-mcp" },
 		transport,
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "sentry", version: "1.0.0" },
 		capabilities: { tools: {} },
 	};

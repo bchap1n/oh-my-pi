@@ -179,7 +179,19 @@ export interface MCPConfigFile {
  * it checks the version *before* consulting its token vault, so an older client
  * is refused even for a caller whose consent is already stored.
  */
-export const MCP_PROTOCOL_VERSION = "2025-11-25";
+export const MCP_PROTOCOL_VERSION = "2026-07-28";
+export const MCP_LEGACY_PROTOCOL_VERSION = "2025-11-25";
+export type MCPProtocolEra = "modern" | "legacy";
+
+export const MCP_META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+export const MCP_META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo";
+export const MCP_META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities";
+export const MCP_META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+export const MCP_META_SUBSCRIPTION_ID = "io.modelcontextprotocol/subscriptionId";
+
+export const MCP_ERROR_HEADER_MISMATCH = -32020;
+export const MCP_ERROR_MISSING_CLIENT_CAPABILITY = -32021;
+export const MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION = -32022;
 
 /** Optionally-sized icon for MCP UI metadata (implementation, tools, resources). */
 export interface MCPIcon {
@@ -204,6 +216,39 @@ export interface MCPClientCapabilities {
 	roots?: { listChanged?: boolean };
 	sampling?: Record<string, never>;
 	experimental?: Record<string, unknown>;
+	/** Modern-era elicitation capability (MRTR). Do not declare `sampling`. */
+	elicitation?: { form?: Record<string, never> };
+}
+
+/** Modern-era request `_meta` block. */
+export interface MCPRequestMeta {
+	[MCP_META_PROTOCOL_VERSION]: string;
+	[MCP_META_CLIENT_INFO]?: MCPImplementation;
+	[MCP_META_CLIENT_CAPABILITIES]: MCPClientCapabilities;
+}
+
+/** Result of `server/discover`. */
+export interface MCPDiscoverResult {
+	resultType?: "complete";
+	supportedVersions: string[];
+	capabilities: MCPServerCapabilities;
+	instructions?: string;
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
+	_meta?: Record<string, unknown>;
+}
+
+/** MRTR: server asks for input before completing a request. */
+export interface MCPInputRequiredResult {
+	resultType: "input_required";
+	inputRequests?: Record<string, { method: string; params?: Record<string, unknown> }>;
+	requestState?: string;
+}
+
+/** Cache hint fields on list/read results. */
+export interface MCPCacheHint {
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
 }
 
 /** MCP server capabilities */
@@ -266,6 +311,8 @@ export interface MCPToolDefinition {
 export interface MCPToolsListResult {
 	tools: MCPToolDefinition[];
 	nextCursor?: string;
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
 }
 
 /** tools/call params */
@@ -291,6 +338,10 @@ export interface MCPToolCallResult {
 	 */
 	structuredContent?: Record<string, unknown>;
 	_meta?: Record<string, unknown>;
+	/** Modern-era MRTR: absent/`"complete"` is a normal result. */
+	resultType?: "complete" | "input_required";
+	inputRequests?: MCPInputRequiredResult["inputRequests"];
+	requestState?: string;
 }
 
 // =============================================================================
@@ -305,6 +356,10 @@ export interface MCPRequestOptions {
 	 * `notifications/progress` while pending; each one restarts a default tool-call deadline (never a configured one).
 	 */
 	onProgress?: (progress: MCPProgress) => void;
+	/** Tool/prompt name or resource URI for the `Mcp-Name` HTTP header. */
+	name?: string;
+	/** Per-param HTTP headers (`Mcp-Param-*`). */
+	paramHeaders?: Record<string, string>;
 }
 
 /** Transport interface - abstracts stdio/http */
@@ -325,6 +380,13 @@ export interface MCPTransport {
 	 * (stdio) omit this.
 	 */
 	setProtocolVersion?(version: string): void;
+
+	/**
+	 * Record the negotiated protocol era. Modern-era transports attach `_meta`
+	 * and (HTTP) `Mcp-*` headers; legacy-era transports keep the 2025-11-25
+	 * initialize/session behavior.
+	 */
+	setEra?(era: MCPProtocolEra): void;
 
 	/** Whether the transport is connected */
 	readonly connected: boolean;
@@ -352,12 +414,18 @@ export interface MCPServerConnection {
 	config: MCPServerConfig;
 	/** Transport instance */
 	transport: MCPTransport;
-	/** Server info from initialize */
+	/** Protocol era this server negotiated. */
+	era: MCPProtocolEra;
+	/** Protocol version in use on this connection. */
+	protocolVersion: string;
+	/** Server info from initialize/discover */
 	serverInfo: MCPImplementation;
 	/** Server capabilities */
 	capabilities: MCPServerCapabilities;
 	/** Cached tools (populated on demand) */
 	tools?: MCPToolDefinition[];
+	/** When a modern `tools/list` returned a `ttlMs`, tools are fresh until this time. */
+	toolsCachedUntil?: number;
 	/** Source metadata (for display) */
 	_source?: SourceMeta;
 	/** Cached resources (populated on demand) */
@@ -412,12 +480,16 @@ export interface MCPResourceTemplate {
 export interface MCPResourcesListResult {
 	resources: MCPResource[];
 	nextCursor?: string;
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
 }
 
 /** Result of resources/templates/list */
 export interface MCPResourceTemplatesListResult {
 	resourceTemplates: MCPResourceTemplate[];
 	nextCursor?: string;
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
 }
 
 /** A single content item from resources/read */
@@ -431,6 +503,8 @@ export interface MCPResourceContentItem {
 /** Result of resources/read */
 export interface MCPResourceReadResult {
 	contents: MCPResourceContentItem[];
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
 }
 
 /** Params for resources/read */
@@ -466,6 +540,8 @@ export interface MCPPrompt {
 export interface MCPPromptsListResult {
 	prompts: MCPPrompt[];
 	nextCursor?: string;
+	ttlMs?: number;
+	cacheScope?: "public" | "private";
 }
 
 /** Content type union for prompt messages */
@@ -500,6 +576,7 @@ export const MCPNotificationMethods = {
 	RESOURCES_LIST_CHANGED: "notifications/resources/list_changed",
 	RESOURCES_UPDATED: "notifications/resources/updated",
 	PROMPTS_LIST_CHANGED: "notifications/prompts/list_changed",
+	SUBSCRIPTIONS_ACKNOWLEDGED: "notifications/subscriptions/acknowledged",
 } as const;
 
 /** Extract a JsonRpcError from a thrown value. Preserves `.code` and `.message` from Error instances or plain objects. */
