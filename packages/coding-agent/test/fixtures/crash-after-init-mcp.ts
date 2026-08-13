@@ -35,6 +35,17 @@ rl.on("line", line => {
 		return;
 	}
 
+	if (message.method === "server/discover" && message.id !== undefined) {
+		// A legacy 2025-era server has no `server/discover`. Answer -32601 so
+		// the dual-era client classifies it legacy and proceeds to initialize.
+		send({
+			jsonrpc: "2.0",
+			id: message.id,
+			error: { code: -32601, message: "Method not found" },
+		});
+		return;
+	}
+
 	if (message.method === "initialize" && message.id !== undefined) {
 		send({
 			jsonrpc: "2.0",

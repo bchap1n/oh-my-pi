@@ -639,6 +639,24 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 		);
 	});
 
+	it("still resolves normal JSON response bodies", async () => {
+		server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json({
+					jsonrpc: "2.0",
+					id: 1,
+					result: { tools: [{ name: "fast", inputSchema: { type: "object" } }] },
+				});
+			},
+		});
+		const transport = await connectedTransport();
+
+		await expect(withPendingGuard(transport.request<ToolList>("tools/list"), "request")).resolves.toEqual({
+			tools: [{ name: "fast", inputSchema: { type: "object" } }],
+		});
+	});
+
 	it("close aborts and drains an in-flight SSE POST request", async () => {
 		const requestReceived = Promise.withResolvers<void>();
 		server = Bun.serve({
@@ -835,6 +853,71 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 });
 
 describe("MCP Streamable HTTP protocol version header", () => {
+	it("omits MCP-Protocol-Version until the version is negotiated (legacy era)", async () => {
+		const seen: { version: string | null; present: boolean } = { version: null, present: true };
+		server = Bun.serve({
+			port: 0,
+			fetch(req) {
+				seen.present = req.headers.has("MCP-Protocol-Version");
+				seen.version = req.headers.get("MCP-Protocol-Version");
+				return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+			},
+		});
+		const transport = await connectedTransport();
+		// Legacy era: the `initialize` request itself must not carry the header.
+		transport.setEra("legacy");
+
+		// No setProtocolVersion yet: this stands in for the initialize request,
+		// which must not carry the header before negotiation completes.
+		await withPendingGuard(transport.request("initialize"), "request");
+		expect(seen.present).toBe(false);
+		expect(seen.version).toBeNull();
+	});
+
+	it("sends MCP-Protocol-Version on the first request in modern era", async () => {
+		const seen: { version: string | null; present: boolean; method: string | null; name: string | null } = {
+			version: null,
+			present: false,
+			method: null,
+			name: null,
+		};
+		server = Bun.serve({
+			port: 0,
+			fetch(req) {
+				seen.present = req.headers.has("MCP-Protocol-Version");
+				seen.version = req.headers.get("MCP-Protocol-Version");
+				seen.method = req.headers.get("Mcp-Method");
+				seen.name = req.headers.get("Mcp-Name");
+				return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+			},
+		});
+		const transport = await connectedTransport();
+		transport.setEra("modern");
+
+		// Modern era: every POST including the first carries the version header.
+		await withPendingGuard(transport.request("tools/list", undefined, { name: "search" }), "request");
+		expect(seen.present).toBe(true);
+		expect(seen.version).toBe("2026-07-28");
+		expect(seen.method).toBe("tools/list");
+		expect(seen.name).toBe("search");
+	});
+
+	it("echoes the negotiated version on requests after setProtocolVersion", async () => {
+		const seen: { version: string | null } = { version: null };
+		server = Bun.serve({
+			port: 0,
+			fetch(req) {
+				seen.version = req.headers.get("MCP-Protocol-Version");
+				return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+			},
+		});
+		const transport = await connectedTransport();
+		transport.setProtocolVersion("2025-06-18");
+
+		await withPendingGuard(transport.request("tools/list"), "request");
+		expect(seen.version).toBe("2025-06-18");
+	});
+
 	it("never lets a configured MCP-Protocol-Version reach the server", async () => {
 		const seen: { pre: string | null; post: string | null } = { pre: null, post: null };
 		server = Bun.serve({
