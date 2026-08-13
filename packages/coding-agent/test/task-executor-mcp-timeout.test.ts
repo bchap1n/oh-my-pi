@@ -34,6 +34,8 @@ function createFakeConnection() {
 		name: "test-server",
 		config: { command: "test", args: [] },
 		transport,
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "test", version: "1" },
 		capabilities: {},
 	};
@@ -123,6 +125,8 @@ test.each([180_000, 0])("MCP proxy honors a transport deadline of %i beyond 60s"
 		name: "test-server",
 		config,
 		transport,
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "test", version: "1" },
 		capabilities: {},
 	});

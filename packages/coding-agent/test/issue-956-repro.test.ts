@@ -91,6 +91,8 @@ describe("interactive /mcp test", () => {
 			name: "github",
 			config: { type: "stdio" as const, command: "github-mcp-server", args: ["serve"] },
 			transport,
+			era: "legacy" as const,
+			protocolVersion: "2025-11-25",
 			serverInfo: { name: "GitHub MCP", version: "1.0.0" },
 			capabilities: {},
 		};
