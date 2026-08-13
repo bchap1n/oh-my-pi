@@ -7,10 +7,24 @@
 import type { FetchImpl } from "@oh-my-pi/pi-ai";
 import { isRecord, logger, readSseEvents } from "@oh-my-pi/pi-utils";
 import { redactUrlForLog } from "../utils/redact-url";
+import { MCP_PROTOCOL_VERSION, withRequestMeta } from "./protocol";
 import type { JsonRpcResponse } from "./types";
 
 /** Hard ceiling on a single MCP HTTP request when the caller provides no signal. */
 const MCP_DEFAULT_TIMEOUT_MS = 60_000;
+
+/** Try to read a JSON-RPC error code from a non-OK response body (null if not one). */
+function jsonRpcErrorCodeFromBody(text: string): number | null {
+	try {
+		const parsed = JSON.parse(text) as { error?: { code?: unknown } };
+		if (parsed && typeof parsed.error === "object" && typeof parsed.error.code === "number") {
+			return parsed.error.code;
+		}
+	} catch {
+		// Not JSON.
+	}
+	return null;
+}
 
 function decodeJsonRpcResponse(message: unknown): JsonRpcResponse | null {
 	if (!isRecord(message) || message.jsonrpc !== "2.0") {
@@ -149,42 +163,63 @@ export async function callMCP(
 	params?: Record<string, unknown>,
 	options?: CallMcpOptions,
 ): Promise<JsonRpcResponse> {
-	const body = {
-		jsonrpc: "2.0",
-		id: Math.random().toString(36).slice(2),
-		method,
-		params: params ?? {},
-	};
 	const signal = options?.signal ?? AbortSignal.timeout(MCP_DEFAULT_TIMEOUT_MS);
-
-	const response = await (options?.fetch ?? fetch)(url, {
-		method: "POST",
-		headers: {
+	// Modern-era attempt first: `_meta`, protocol version header and `Mcp-Method`.
+	// A handshake-era endpoint that refuses them with a plain 400/404/405 gets
+	// one legacy-shaped retry, without initializing a session here.
+	let modern = true;
+	for (;;) {
+		const id = Math.random().toString(36).slice(2);
+		const body = {
+			jsonrpc: "2.0",
+			id,
+			method,
+			params: modern ? withRequestMeta(params) : (params ?? {}),
+		};
+		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 			Accept: "application/json, text/event-stream",
 			...options?.headers,
-		},
-		body: JSON.stringify(body),
-		signal,
-	});
-
-	if (!response.ok) {
-		if (options?.onHttpError) {
-			throw options.onHttpError(response, await response.text());
+		};
+		if (modern) {
+			headers["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION;
+			headers["Mcp-Method"] = method;
 		}
-		const errorMsg = `MCP request failed: ${response.status} ${response.statusText}`;
-		logger.error(errorMsg, { url: redactUrlForLog(url), method, params });
-		throw new Error(errorMsg);
-	}
-
-	try {
-		return await readMcpJsonRpcResponse(response, body.id, signal);
-	} catch (error) {
-		logger.error("Failed to parse MCP response", {
-			url: redactUrlForLog(url),
-			method,
-			error: error instanceof Error ? error.message : String(error),
+		const response = await (options?.fetch ?? fetch)(url, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+			signal,
 		});
-		throw options?.onParseError?.(error) ?? error;
+
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			const code = jsonRpcErrorCodeFromBody(text);
+			if (
+				modern &&
+				(response.status === 400 || response.status === 404 || response.status === 405) &&
+				code === null
+			) {
+				modern = false;
+				continue;
+			}
+			if (options?.onHttpError) {
+				throw options.onHttpError(response, text);
+			}
+			const errorMsg = `MCP request failed: ${response.status} ${response.statusText}`;
+			logger.error(errorMsg, { url: redactUrlForLog(url), method, params });
+			throw new Error(errorMsg);
+		}
+
+		try {
+			return await readMcpJsonRpcResponse(response, id, signal);
+		} catch (error) {
+			logger.error("Failed to parse MCP response", {
+				url: redactUrlForLog(url),
+				method,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw options?.onParseError?.(error) ?? error;
+		}
 	}
 }

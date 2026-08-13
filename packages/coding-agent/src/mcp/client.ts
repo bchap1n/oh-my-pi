@@ -22,6 +22,8 @@ import {
 } from "./host/contract";
 import { HostLink, type HostLinkReattach } from "./link";
 import {
+	MCP_LEGACY_PROTOCOL_VERSION,
+	MCP_PROTOCOL_VERSION,
 	MCP_SUBSCRIPTION_ACKNOWLEDGED,
 	type MCPDiscoverResult,
 	MCPErrorCode,
@@ -57,7 +59,7 @@ import type {
 export const MCP_DEFAULT_IDLE_MS = 300_000;
 
 /** Round trips one logical call may take before the server is considered stuck asking for input. */
-const MCP_MAX_ROUND_TRIPS = 8;
+const MCP_MAX_ROUND_TRIPS = 4;
 
 /** The single root omp exposes for a working directory. */
 export function projectRoots(cwd: string): MCPRoot[] {
@@ -490,6 +492,9 @@ export async function connectToServer(
 
 	const connect = async (): Promise<HostedMCPConnection> => {
 		await link.connect(signal);
+		connection.era = link.era ?? "legacy";
+		connection.protocolVersion =
+			connection.era === "modern" ? MCP_PROTOCOL_VERSION : MCP_LEGACY_PROTOCOL_VERSION;
 		await discoverServer(connection, { signal });
 		try {
 			await listens.openLists();
@@ -577,9 +582,7 @@ async function requestWithInput<T>(
 		}
 		attempt.inputResponses = inputResponses;
 	}
-	throw new Error(
-		`MCP server "${connection.name}" still asked for input on ${method} after ${MCP_MAX_ROUND_TRIPS} round trips`,
-	);
+	throw new Error(`MRTR exceeded ${MCP_MAX_ROUND_TRIPS} rounds on ${method} of "${connection.name}"`);
 }
 
 /**

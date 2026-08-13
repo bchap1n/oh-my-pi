@@ -140,6 +140,8 @@ export class HostLink implements MCPTransport {
 	 */
 	#recovering: number | undefined;
 	#status: McpUpstreamStatus | undefined;
+	/** Era resolved for the current attachment. */
+	#era: McpEra | undefined;
 	#lastId = 0;
 	#everAttached = false;
 	#closed = false;
@@ -193,6 +195,11 @@ export class HostLink implements MCPTransport {
 		return this.#status;
 	}
 
+
+	/** The era the host resolved this server as, once attached. */
+	get era(): McpEra | undefined {
+		return this.#era;
+	}
 	/**
 	 * Resolve the server's era and attach to its unit.
 	 *
@@ -373,6 +380,7 @@ export class HostLink implements MCPTransport {
 		}
 		const era = resolvedEra ?? (await this.#resolveEra(access, generation, signal, mayRefresh));
 		this.#assertCurrent(generation);
+		this.#era = era;
 		const spec = this.#spec;
 		const host = await access.attach(
 			{ spec, era, name: this.#name, instance: this.#instance, idleMs: this.#idleMs },
