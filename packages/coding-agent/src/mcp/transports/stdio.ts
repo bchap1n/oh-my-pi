@@ -15,6 +15,7 @@ import type {
 	JsonRpcMessage,
 	JsonRpcRequest,
 	JsonRpcResponse,
+	MCPProtocolEra,
 	MCPRequestOptions,
 	MCPStdioServerConfig,
 	MCPTransport,
@@ -28,6 +29,7 @@ import {
 } from "../errors";
 import { RequestIdAllocator } from "../request-id";
 import { routeProgressNotification, withProgressToken } from "../progress";
+import { attachModernMeta } from "../request-meta";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import { isThenable } from "../../utils/ipc";
 
@@ -565,6 +567,11 @@ export class StdioTransport implements MCPTransport {
 	#connected = false;
 	#readLoop: Promise<void> | null = null;
 	/**
+	 * Protocol era this transport is operating in. `null` during the era probe
+	 * (stdio probes with modern `_meta`). Set by `connectToServer` once known.
+	 */
+	#era: MCPProtocolEra | null = null;
+	/**
 	 * Set from `resolveStdioSpawnCommand()`'s `detached` flag in `connect()`.
 	 * Gates process-group signaling in `close()` — only a transport that
 	 * actually spawned into its own session may target it.
@@ -581,6 +588,11 @@ export class StdioTransport implements MCPTransport {
 
 	get connected(): boolean {
 		return this.#connected;
+	}
+
+	/** Record the negotiated protocol era. */
+	setEra(era: MCPProtocolEra): void {
+		this.#era = era;
 	}
 
 	/**
@@ -737,6 +749,13 @@ export class StdioTransport implements MCPTransport {
 	}
 
 	async #handleServerRequest(request: JsonRpcRequest): Promise<void> {
+		// In modern era there is no legacy server-to-client protocol session: a
+		// server sending us a JSON-RPC request is a legacy leak. Reply -32601 and
+		// do not treat it as a protocol session.
+		if (this.#era === "modern") {
+			this.#sendResponse(request.id, undefined, { code: -32601, message: "Method not found" });
+			return;
+		}
 		try {
 			if (!this.onRequest) {
 				this.#sendResponse(request.id, undefined, { code: -32601, message: "Method not found" });
@@ -798,11 +817,12 @@ export class StdioTransport implements MCPTransport {
 		}
 
 		const id = this.#requestIds.next(this.config.requestIdFormat);
+		const withProgress = options?.onProgress ? withProgressToken(params, id) : params;
 		const request = {
 			jsonrpc: "2.0" as const,
 			id,
 			method,
-			params: options?.onProgress ? withProgressToken(params, id) : (params ?? {}),
+			params: this.#era === "modern" ? attachModernMeta(withProgress) : (withProgress ?? {}),
 		};
 
 		const timeout = resolveMCPTimeoutMs(this.config.timeout);

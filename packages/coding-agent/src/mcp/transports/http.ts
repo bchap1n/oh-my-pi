@@ -16,7 +16,7 @@ import type {
 	MCPSseServerConfig,
 	MCPTransport,
 } from "../../mcp/types";
-import { toJsonRpcError } from "../../mcp/types";
+import { MCP_PROTOCOL_VERSION, type MCPProtocolEra, toJsonRpcError } from "../../mcp/types";
 import {
 	createMCPJsonRpcError,
 	type MCPFailureStage,
@@ -27,6 +27,7 @@ import {
 } from "../errors";
 import { RequestIdAllocator } from "../request-id";
 import { routeProgressNotification, withProgressToken } from "../progress";
+import { attachModernMeta } from "../request-meta";
 import {
 	createMCPTimeout,
 	getNeverAbortSignal,
@@ -35,6 +36,7 @@ import {
 	resolveMCPTimeoutMs,
 } from "../timeout";
 import { type MCPFetchInit, mcpFetch, withoutHeader } from "./header-policy";
+import { encodeMcpHeaderValue } from "./mcp-headers";
 
 const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
 const DEFAULT_SSE_RETRY_MS = 3_000;
@@ -42,6 +44,24 @@ const DEFAULT_SSE_RETRY_MS = 3_000;
 interface SSEResumeState {
 	lastEventId: string | null;
 	retryMs: number;
+}
+
+/**
+ * Try to parse a non-OK HTTP response body as a JSON-RPC error object. Returns
+ * `{ code, data }` when the body parses to `{ error: { code, data?, message? } }`
+ * with a numeric code; else `null`. Used so `connectToServer` can tell a modern
+ * negotiation error (e.g. -32022) from a plain legacy 400/404.
+ */
+function parseJsonRpcErrorBody(text: string): { code: number; data?: unknown } | null {
+	try {
+		const parsed = JSON.parse(text) as { error?: { code?: unknown; data?: unknown } };
+		if (parsed && typeof parsed.error === "object" && typeof parsed.error.code === "number") {
+			return { code: parsed.error.code, data: parsed.error.data };
+		}
+	} catch {
+		// Not JSON — not a JSON-RPC error body.
+	}
+	return null;
 }
 
 /**
@@ -87,6 +107,13 @@ export class HttpTransport implements MCPTransport {
 	#connected = false;
 	#sessionId: string | null = null;
 	#sseConnection: AbortController | null = null;
+	/**
+	 * Protocol era this transport is operating in. `null` during the era probe
+	 * (a modern probe sends modern headers + `_meta` so a 2026-07-28 server
+	 * recognizes us). `"modern"` and `"legacy"` are set by `connectToServer`
+	 * once the era is known.
+	 */
+	#era: MCPProtocolEra | null = null;
 	readonly #requestIds = new RequestIdAllocator();
 	readonly #progressCallbacks = new Map<string | number, NonNullable<MCPRequestOptions["onProgress"]>>();
 	#lifecycleController = new AbortController();
@@ -116,15 +143,19 @@ export class HttpTransport implements MCPTransport {
 	 * Fetch the configured endpoint with header precedence and origin policy.
 	 *
 	 * The transport fully owns `MCP-Protocol-Version`: it is stripped from
-	 * configured headers so a user's `mcp.json` can never inject it, and added
-	 * only once a version is negotiated (required by the MCP Streamable HTTP spec
-	 * after `initialize`). Before negotiation — the `initialize` request itself —
-	 * no protocol-version header is sent from either source.
+	 * configured headers so a user's `mcp.json` can never inject it. In `modern`
+	 * era the header is sent on every request, matching `_meta`. In `legacy`
+	 * era the header is only added once a version is negotiated (`initialize`),
+	 * per the 2025-11-25 Streamable HTTP spec.
 	 */
 	#fetch(init: MCPFetchInit, generated: Record<string, string>): Promise<Response> {
 		const configured = withoutHeader(this.config.headers, "MCP-Protocol-Version");
-		const withVersion =
-			this.#protocolVersion === null ? generated : { "MCP-Protocol-Version": this.#protocolVersion, ...generated };
+		let withVersion = generated;
+		if (this.#era === "modern") {
+			withVersion = { "MCP-Protocol-Version": this.#protocolVersion ?? MCP_PROTOCOL_VERSION, ...generated };
+		} else if (this.#protocolVersion !== null) {
+			withVersion = { "MCP-Protocol-Version": this.#protocolVersion, ...generated };
+		}
 		const request = mcpFetch(
 			this.config.url,
 			init,
@@ -174,6 +205,11 @@ export class HttpTransport implements MCPTransport {
 		);
 	}
 
+	/** Record the negotiated protocol era. */
+	setEra(era: MCPProtocolEra): void {
+		this.#era = era;
+	}
+
 	/** Record the protocol version negotiated during `initialize`. */
 	setProtocolVersion(version: string): void {
 		this.#protocolVersion = version;
@@ -207,6 +243,10 @@ export class HttpTransport implements MCPTransport {
 	 * Message reading continues in the background.
 	 */
 	async startSSEListener(): Promise<void> {
+		// 2026-07-28 servers carry server-to-client messages on POST responses
+		// (SSE on the POST body); there is no long-lived GET stream. Legacy-era
+		// servers keep the GET + Last-Event-ID resume path below.
+		if (this.#era === "modern") return;
 		if (!this.#connected) return;
 		if (this.#sseConnection) return;
 
@@ -446,11 +486,14 @@ export class HttpTransport implements MCPTransport {
 		}
 
 		const id = this.#requestIds.next(this.config.requestIdFormat);
+		const modern = this.#era === "modern";
+		const withProgress = options?.onProgress ? withProgressToken(params, id) : params;
+		const requestParams = modern ? attachModernMeta(withProgress) : (withProgress ?? {});
 		const body = {
 			jsonrpc: "2.0" as const,
 			id,
 			method,
-			params: options?.onProgress ? withProgressToken(params, id) : (params ?? {}),
+			params: requestParams,
 		};
 
 		const generated: Record<string, string> = {
@@ -458,8 +501,19 @@ export class HttpTransport implements MCPTransport {
 			Accept: "application/json, text/event-stream",
 		};
 
-		if (this.#sessionId) {
+		if (!modern && this.#sessionId) {
 			generated["Mcp-Session-Id"] = this.#sessionId;
+		}
+		if (modern) {
+			generated["Mcp-Method"] = method;
+			if (options?.name) {
+				generated["Mcp-Name"] = encodeMcpHeaderValue(options.name);
+			}
+			if (options?.paramHeaders) {
+				for (const [k, v] of Object.entries(options.paramHeaders)) {
+					generated[k] = v;
+				}
+			}
 		}
 
 		// Caller cancellation owns this request only until its response arrives;
@@ -508,6 +562,25 @@ export class HttpTransport implements MCPTransport {
 					.filter(Boolean)
 					.join("; ");
 				const suffix = authHints ? ` [${authHints}]` : "";
+				// A non-OK body may still be a JSON-RPC error (e.g. -32022
+				// UnsupportedProtocolVersion from a modern server). Preserve its
+				// `.code` and raw `.data` so `connectToServer` can distinguish it
+				// from a plain legacy 400/404 and read `data.supported`.
+				const jsonError = parseJsonRpcErrorBody(text);
+				if (jsonError) {
+					throw Object.assign(
+						new MCPTransportError({
+							transport: "http",
+							stage,
+							failure: "http_status",
+							message: `HTTP ${response.status}: ${text}${suffix}`,
+							retryable: response.status === 404 || response.status === 502 || response.status === 503,
+							code: jsonError.code,
+							traceId,
+						}),
+						{ data: jsonError.data ?? jsonError },
+					);
+				}
 				throw new MCPTransportError({
 					transport: "http",
 					stage,
@@ -891,7 +964,9 @@ export class HttpTransport implements MCPTransport {
 			await Promise.allSettled([...this.#activeFetches, ...this.#activeRequests, ...this.#backgroundDrains]);
 		}
 
-		if (this.#sessionId) {
+		// Send session termination only for legacy-era servers; 2026-07-28 has no
+		// long-lived session to terminate.
+		if (this.#sessionId && this.#era !== "modern") {
 			const timeout = resolveMCPTimeoutMs(this.config.timeout);
 			const operation = createMCPTimeout(timeout);
 			try {
