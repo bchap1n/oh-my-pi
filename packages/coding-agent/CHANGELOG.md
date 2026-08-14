@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the PowerShell debug adapter: PSES launches the target via the `script` launch key, but the tool sent only `program`, so `.ps1` debug sessions terminated instantly without binding breakpoints. Launch now maps `program` to `script` for the `powershell` adapter.
+
 ## [17.2.15] - 2026-08-12
 
 ### Added

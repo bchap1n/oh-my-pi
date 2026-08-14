@@ -778,6 +778,51 @@ describe("DebugTool launch validation", () => {
 		}
 	});
 
+	it("maps the launch program to the PSES 'script' key for the powershell adapter", async () => {
+		// PSES has no `program` launch concept; without `script` the debuggee runs
+		// in a REPL-shaped session and any breakpoint never binds before exit.
+		const psAdapter: DapResolvedAdapter = {
+			...TEST_ADAPTER,
+			name: "powershell",
+			command: "pwsh",
+			resolvedCommand: "pwsh",
+			launchDefaults: { request: "launch", stopOnEntry: false },
+		};
+		const launchSpy = spyOn(dapModule, "selectLaunchAdapter").mockReturnValue({
+			kind: "adapter",
+			adapter: psAdapter,
+		});
+		const sessionLaunchSpy = spyOn(dapModule.dapSessionManager, "launch").mockImplementation(async opts => {
+			throw Object.assign(new Error("captured launch"), { capturedOptions: opts });
+		});
+		try {
+			const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "omp-debug-powershell-script-"));
+			try {
+				await fs.writeFile(path.join(cwd, "task.ps1"), "Write-Host 'hi'\n");
+				const session: ToolSession = {
+					cwd,
+					hasUI: false,
+					getSessionFile: () => null,
+					getSessionSpawns: () => "*",
+					settings: Settings.isolated({ "debug.enabled": true }),
+				};
+				const tool = new DebugTool(session);
+
+				await expect(
+					tool.execute("call", { action: "launch", program: "task.ps1", adapter: "powershell" }),
+				).rejects.toThrow(/captured launch/);
+				const [opts] = sessionLaunchSpy.mock.calls[0]!;
+				expect(opts.adapter.name).toBe("powershell");
+				expect(opts.extraLaunchArguments).toEqual({ script: path.join(cwd, "task.ps1") });
+			} finally {
+				await removeWithRetries(cwd);
+			}
+		} finally {
+			sessionLaunchSpy.mockRestore();
+			launchSpy.mockRestore();
+		}
+	});
+
 	it("throws targeted 'python not found in PATH' when adapter:'debugpy' is unresolvable for launch", async () => {
 		const launchSpy = spyOn(dapModule, "selectLaunchAdapter").mockReturnValue({
 			kind: "unavailable",
