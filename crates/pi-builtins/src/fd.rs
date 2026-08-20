@@ -1,4 +1,6 @@
 //! In-process `fd` builtin backed by `pi_walker`, `globset`, and `regex`.
+//!
+//! Relocated from pi-shell's native implementation.
 
 use std::{
 	collections::HashMap,
@@ -13,18 +15,13 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use brush_core::{
-	Error,
-	builtins::{BoxFuture, ContentOptions, ContentType, Registration},
-	commands::{CommandArg, ExecutionContext},
-	extensions::ShellExtensions,
-	openfiles::{OpenFile, OpenFiles, null},
-	results::ExecutionResult,
-};
-use clap::{ArgAction, Parser, ValueEnum, error::ErrorKind};
+use brush_core::{ShellExtensions, builtins::Registration};
+use clap::{ArgAction, Parser, ValueEnum};
 use globset::{GlobBuilder, GlobMatcher};
 use pi_walker::CollectedEntry;
 use regex::{Regex, RegexBuilder};
+
+use crate::host::{Host, Utility, util};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -511,14 +508,14 @@ struct SizeFilter {
 	bytes:    u64,
 }
 
-#[cfg_attr(not(unix), allow(dead_code, reason = "owner matching is unsupported off Unix"))]
+#[cfg_attr(not(unix), allow(dead_code))]
 #[derive(Clone, Copy)]
 enum OwnerSide {
 	Include(u32),
 	Exclude(u32),
 }
 
-#[cfg_attr(not(unix), allow(dead_code, reason = "owner matching is unsupported off Unix"))]
+#[cfg_attr(not(unix), allow(dead_code))]
 #[derive(Clone, Copy)]
 struct OwnerMatcher {
 	user:  Option<OwnerSide>,
@@ -552,119 +549,60 @@ struct SearchState {
 	had_error: bool,
 }
 
-/// Creates the `fd` shell builtin registration.
-pub fn fd_builtin<SE: ShellExtensions>() -> Registration<SE> {
-	fn execute<SE: ShellExtensions>(
-		context: ExecutionContext<'_, SE>,
-		args: Vec<CommandArg>,
-	) -> BoxFuture<'_, Result<ExecutionResult, Error>> {
-		Box::pin(run_fd(context, args))
-	}
+impl Utility for FdCli {
+	const NAME: &'static str = "fd";
+	const USAGE_ERROR: u8 = 2;
 
-	Registration {
-		execute_func: execute::<SE>,
-		content_func: fd_content,
-		disabled: false,
-		special_builtin: false,
-		declaration_builtin: false,
-		transparent_background_wrapper: false,
-	}
-}
+	fn run(mut self, host: &mut Host) -> i32 {
+		let quiet = self.quiet;
+		let base_dir = self
+			.base_directory
+			.as_deref()
+			.map_or_else(|| host.cwd().to_path_buf(), |path| host.resolve(path));
+		self.ignore_files = self
+			.ignore_files
+			.iter()
+			.map(|path| {
+				if path.is_absolute() {
+					host.resolve(path)
+				} else {
+					host.resolve(base_dir.join(path))
+				}
+			})
+			.collect();
+		let cancelled = host.cancel_flag();
 
-async fn run_fd<SE: ShellExtensions>(
-	context: ExecutionContext<'_, SE>,
-	args: Vec<CommandArg>,
-) -> Result<ExecutionResult, Error> {
-	let stdout = context.try_fd(OpenFiles::STDOUT_FD);
-	let stderr = context.try_fd(OpenFiles::STDERR_FD);
-	let cwd = context.shell.working_dir().to_path_buf();
-	let cancel = context.cancel_token();
-	let argv: Vec<OsString> = args
-		.iter()
-		.map(|arg| OsString::from(arg.to_string()))
-		.collect();
-	drop(context);
-
-	let cancel_flag = Arc::new(AtomicBool::new(false));
-	let thread_flag = Arc::clone(&cancel_flag);
-	let mut handle = tokio::task::spawn_blocking(move || {
-		let mut stdout = stdout.unwrap_or_else(null_sink);
-		let mut stderr = stderr.unwrap_or_else(null_sink);
-		run_fd_sync(argv, cwd, &mut stdout, &mut stderr, &thread_flag)
-	});
-
-	let code = match cancel {
-		Some(token) => {
-			let token_check = token.clone();
-			tokio::select! {
-				biased;
-				() = token.cancelled() => {
-					cancel_flag.store(true, Ordering::Relaxed);
-					let _ = (&mut handle).await;
-					130
-				},
-				result = &mut handle => {
-					if token_check.is_cancelled() { 130 } else { result.unwrap_or(1) }
-				},
-			}
-		},
-		None => handle.await.unwrap_or(1),
-	};
-
-	Ok(ExecutionResult::new(exit_status(code)))
-}
-
-fn run_fd_sync(
-	argv: Vec<OsString>,
-	cwd: PathBuf,
-	stdout: &mut OpenFile,
-	stderr: &mut OpenFile,
-	cancelled: &AtomicBool,
-) -> i32 {
-	let cli = match FdCli::try_parse_from(argv) {
-		Ok(cli) => cli,
-		Err(err) => {
-			let rendered = err.to_string();
-			return match err.kind() {
-				ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-					let _ = write!(stdout, "{rendered}");
-					0
-				},
-				_ => {
-					let _ = write!(stderr, "{rendered}");
+		match search(self, base_dir, host, &cancelled) {
+			Ok(state) => {
+				if state.had_error {
 					2
-				},
-			};
-		},
-	};
-
-	let quiet = cli.quiet;
-	match search(cli, cwd, stdout, stderr, cancelled) {
-		Ok(state) => {
-			if state.had_error {
+				} else if quiet {
+					i32::from(state.matches == 0)
+				} else {
+					0
+				}
+			},
+			// A closed downstream reader (`fd … | head`) surfaces as BrokenPipe on
+			// stdout writes. Real fd dies silently from SIGPIPE; mirror that with
+			// exit 141 (128+SIGPIPE) and no diagnostic.
+			Err(err) if err.kind() == io::ErrorKind::BrokenPipe => 141,
+			Err(err) => {
+				let _ = writeln!(host.stderr, "fd: {err}");
 				2
-			} else if quiet {
-				i32::from(state.matches == 0)
-			} else {
-				0
-			}
-		},
-		// A closed downstream reader (`fd … | head`) surfaces as BrokenPipe on
-		// stdout writes. Real fd dies silently from SIGPIPE; mirror that with
-		// exit 141 (128+SIGPIPE) and no diagnostic.
-		Err(err) if err.kind() == io::ErrorKind::BrokenPipe => 141,
-		Err(err) => {
-			let _ = writeln!(stderr, "fd: {err}");
-			2
-		},
+			},
+		}
 	}
+}
+
+/// Creates the `fd` builtin registration.
+pub(crate) fn fd_builtin<SE: ShellExtensions>() -> Registration<SE> {
+	util::<FdCli, SE>()
 }
 
 fn search(
 	cli: FdCli,
-	cwd: PathBuf,
-	stdout: &mut OpenFile,
-	stderr: &mut OpenFile,
+	base_dir: PathBuf,
+	host: &mut Host,
 	cancelled: &AtomicBool,
 ) -> io::Result<SearchState> {
 	if cli.list_details || !cli.exec.is_empty() || !cli.exec_batch.is_empty() || cli.batch_size != 0
@@ -676,8 +614,7 @@ fn search(
 	}
 	let _ = (cli.color, cli.hyperlink, cli.strip_cwd_prefix);
 
-	let base_dir = resolve_path(&cwd, cli.base_directory.as_deref());
-	let search_paths = resolve_search_paths(&cli, &base_dir)?;
+	let search_paths = resolve_search_paths(&cli, &base_dir, host)?;
 	let absolute_roots = search_paths
 		.iter()
 		.filter(|path| path.original.is_absolute())
@@ -728,14 +665,20 @@ fn search(
 		prune: cli.prune,
 	};
 
-	if let Some(state) =
-		try_search_fast(&cli, &search_paths, &config, max_results, stdout, stderr, cancelled)?
-	{
+	if let Some(state) = try_search_fast(
+		&cli,
+		&search_paths,
+		&config,
+		max_results,
+		&mut host.stdout,
+		&mut host.stderr,
+		cancelled,
+	)? {
 		return Ok(state);
 	}
 
 	let use_gitignore = !(no_ignore(&cli) || no_ignore_vcs(&cli));
-	let mut out = BufWriter::new(stdout);
+	let mut out = host.stdout_writer();
 	let mut state = SearchState { matches: 0, had_error: false };
 	for search_path in &search_paths {
 		if cancelled.load(Ordering::Relaxed) || max_results.is_some_and(|max| state.matches >= max) {
@@ -800,8 +743,8 @@ fn try_search_fast(
 	search_paths: &[SearchPath],
 	config: &SearchConfig,
 	max_results: Option<usize>,
-	stdout: &mut OpenFile,
-	stderr: &mut OpenFile,
+	stdout: &mut impl Write,
+	stderr: &mut impl Write,
 	cancelled: &AtomicBool,
 ) -> io::Result<Option<SearchState>> {
 	if !can_use_fast_search(cli, config) {
@@ -988,16 +931,16 @@ fn matches_walker_type_filter(
 	true
 }
 
-/// Builds a walker heartbeat closure that observes the shell cancel flag.
+/// Builds a walker heartbeat closure that observes the host cancel flag.
 ///
-/// The shell wrapper (`run_fd`) flips `cancelled` when it sees the runtime
-/// cancellation token fire, then awaits the blocking task. Without this
-/// closure, `pi_walker`'s per-entry heartbeat never checks the flag and a
-/// cancelled walk keeps traversing until the whole tree is collected.
+/// The shared utility adapter flips `cancelled` when the shell cancellation
+/// token fires, then awaits the blocking task. Without this closure,
+/// `pi_walker`'s per-entry heartbeat never checks the flag and a cancelled walk
+/// keeps traversing until the whole tree is collected.
 /// Returning [`io::ErrorKind::Interrupted`] surfaces as
-/// [`WalkError::Interrupted`], which the callers translate to a silent break —
-/// the shell wrapper owns the user-visible exit code (130), so no `fd:`
-/// diagnostic is emitted.
+/// [`pi_walker::WalkError::Interrupted`], which the callers translate to a
+/// silent break — the shared adapter owns the user-visible exit code (130), so
+/// no `fd:` diagnostic is emitted.
 ///
 /// Regression cover for #3949 (fd) and #3933 (grep/rg — same class of defect).
 fn cancel_heartbeat(cancelled: &AtomicBool) -> impl Fn() -> io::Result<()> + Sync + '_ {
@@ -1181,7 +1124,7 @@ fn matches_owner_filters(filters: &[OwnerMatcher], metadata: Option<&Metadata>) 
 }
 
 #[cfg(not(unix))]
-const fn matches_owner_filters(filters: &[OwnerMatcher], _metadata: Option<&Metadata>) -> bool {
+fn matches_owner_filters(filters: &[OwnerMatcher], _metadata: Option<&Metadata>) -> bool {
 	filters.is_empty()
 }
 
@@ -1193,7 +1136,11 @@ const fn owner_side_matches(side: OwnerSide, actual: u32) -> bool {
 	}
 }
 
-fn resolve_search_paths(cli: &FdCli, base_dir: &Path) -> io::Result<Vec<SearchPath>> {
+fn resolve_search_paths(
+	cli: &FdCli,
+	base_dir: &Path,
+	host: &Host,
+) -> io::Result<Vec<SearchPath>> {
 	if !cli.search_paths.is_empty() && !cli.paths.is_empty() {
 		return Err(io::Error::new(
 			io::ErrorKind::InvalidInput,
@@ -1211,9 +1158,9 @@ fn resolve_search_paths(cli: &FdCli, base_dir: &Path) -> io::Result<Vec<SearchPa
 		.into_iter()
 		.map(|original| {
 			let resolved = if original.is_absolute() {
-				original.clone()
+				host.resolve(&original)
 			} else {
-				base_dir.join(&original)
+				host.resolve(base_dir.join(&original))
 			};
 			SearchPath { original, resolved }
 		})
@@ -1225,13 +1172,6 @@ struct SearchPath {
 	resolved: PathBuf,
 }
 
-fn resolve_path(cwd: &Path, path: Option<&Path>) -> PathBuf {
-	match path {
-		Some(path) if path.is_absolute() => path.to_path_buf(),
-		Some(path) => cwd.join(path),
-		None => cwd.to_path_buf(),
-	}
-}
 
 const fn include_hidden(cli: &FdCli) -> bool {
 	(cli.hidden || cli.unrestricted > 0) && !cli.no_hidden
@@ -1625,91 +1565,35 @@ fn remove_extension(value: &str) -> String {
 	}
 }
 
-fn null_sink() -> OpenFile {
-	null().unwrap_or_else(|_| OpenFile::from(io::stdout()))
-}
-
-#[allow(
-	clippy::unnecessary_wraps,
-	reason = "signature must match brush's CommandContentFunc fn pointer"
-)]
-fn fd_content(
-	_name: &str,
-	_content_type: ContentType,
-	_options: &ContentOptions,
-) -> Result<String, Error> {
-	Ok("fd: fd [OPTIONS] [pattern] [path]...\n".to_string())
-}
-
-fn exit_status(code: i32) -> u8 {
-	u8::try_from(code.clamp(0, 255)).unwrap_or(1)
-}
 
 #[cfg(test)]
 mod tests {
 	use std::{
-		env, fs,
-		io::Read,
-		sync::atomic::{AtomicBool, AtomicUsize, Ordering},
-		time::{SystemTime, UNIX_EPOCH},
+		fs,
+		sync::atomic::AtomicBool,
 	};
 
 	use brush_core::openfiles::OpenFile;
 	use clap::Parser;
+	use tempfile::{Builder, TempDir};
 
-	use super::{FdCli, cancel_heartbeat, run_fd_sync, search};
-
-	static COUNTER: AtomicUsize = AtomicUsize::new(0);
+	use super::{FdCli, cancel_heartbeat};
+	use crate::host::{Host, Utility, run_util};
 
 	/// Build a fresh temp directory containing a single matchable file plus a
 	/// filler file, so the walker has more than one entry to iterate. Both the
 	/// walker-level regressions below and the positive-path search test assert
 	/// against this seed.
-	fn seeded_tree(tag: &str) -> std::path::PathBuf {
-		let nanos = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.map_or(0, |d| d.as_nanos());
-		let root = env::temp_dir().join(format!(
-			"pi-shell-fd-cancel-{tag}-{}-{}-{}",
-			std::process::id(),
-			nanos,
-			COUNTER.fetch_add(1, Ordering::Relaxed),
-		));
-		fs::create_dir_all(&root).expect("temp tree should be created");
-		fs::write(root.join("haystack.txt"), b"needle\n").expect("seed file should be written");
-		fs::write(root.join("filler.txt"), b"filler\n").expect("filler file should be written");
-		root
-	}
-
-	/// Returns `(capture_path, writable_handle)`. The path is a fresh temp file
-	/// scoped to this test invocation; the handle wraps that same file so writes
-	/// go through the `OpenFile::File` variant and can later be read back.
-	fn capture_file(kind: &str) -> (std::path::PathBuf, fs::File) {
-		let nanos = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.map_or(0, |d| d.as_nanos());
-		let path = env::temp_dir().join(format!(
-			"pi-shell-fd-cancel-{kind}-{}-{}-{}",
-			std::process::id(),
-			nanos,
-			COUNTER.fetch_add(1, Ordering::Relaxed),
-		));
-		let file = fs::OpenOptions::new()
-			.create(true)
-			.read(true)
-			.write(true)
-			.truncate(true)
-			.open(&path)
-			.expect("capture file should open");
-		(path, file)
-	}
-
-	fn read_all(path: &std::path::Path) -> Vec<u8> {
-		let mut file = fs::File::open(path).expect("open capture");
-		let mut buf = Vec::new();
-		file.read_to_end(&mut buf).expect("read capture");
-		let _ = fs::remove_file(path);
-		buf
+	fn seeded_tree(tag: &str) -> TempDir {
+		let tree = Builder::new()
+			.prefix(&format!("brush-fd-cancel-{tag}-"))
+			.tempdir()
+			.expect("temp tree should be created");
+		fs::write(tree.path().join("haystack.txt"), b"needle\n")
+			.expect("seed file should be written");
+		fs::write(tree.path().join("filler.txt"), b"filler\n")
+			.expect("filler file should be written");
+		tree
 	}
 
 	/// Build the same `WalkRequest` `search`/`try_search_fast` build for the
@@ -1742,14 +1626,13 @@ mod tests {
 		// observing the flag — the exact bug #3949 reports.
 		let tree = seeded_tree("collect");
 		let cancelled = AtomicBool::new(true);
-		let err = walk_request(&tree)
+		let err = walk_request(tree.path())
 			.collect_with_heartbeat(cancel_heartbeat(&cancelled))
 			.expect_err("walker must surface the cancel flag as an error");
 		assert!(
 			matches!(err, pi_walker::WalkError::Interrupted(_)),
 			"heartbeat interruption should surface as WalkError::Interrupted, got {err:?}"
 		);
-		let _ = fs::remove_dir_all(&tree);
 	}
 
 	#[test]
@@ -1761,7 +1644,7 @@ mod tests {
 		let tree = seeded_tree("stream");
 		let cancelled = AtomicBool::new(true);
 		let visited = std::cell::Cell::new(0_usize);
-		let result = walk_request(&tree).for_each_entry_with_heartbeat(
+		let result = walk_request(tree.path()).for_each_entry_with_heartbeat(
 			cancel_heartbeat(&cancelled),
 			|_entry| {
 				visited.set(visited.get() + 1);
@@ -1779,7 +1662,6 @@ mod tests {
 			0,
 			"visitor must not receive any entry once the heartbeat has aborted the walk",
 		);
-		let _ = fs::remove_dir_all(&tree);
 	}
 
 	#[test]
@@ -1789,26 +1671,16 @@ mod tests {
 		// and its walker call (the outer pre-loop guard passes with
 		// cancelled=false), then finds the seeded match.
 		let tree = seeded_tree("normal");
-		let path = tree.to_str().expect("utf8 path");
-		let cli = FdCli::try_parse_from(["fd", "haystack", path]).expect("argv");
-		let (stdout_capture, stdout_file) = capture_file("stdout-ok");
-		let (stderr_capture, stderr_file) = capture_file("stderr-ok");
-		let mut stdout = OpenFile::from(stdout_file);
-		let mut stderr = OpenFile::from(stderr_file);
-		let cancelled = AtomicBool::new(false);
-		let state = search(cli, tree.clone(), &mut stdout, &mut stderr, &cancelled)
-			.expect("uncancelled search should succeed");
-		drop(stdout);
-		drop(stderr);
-		assert_eq!(state.matches, 1, "seeded haystack.txt should match once");
-		let out = read_all(&stdout_capture);
-		let err = read_all(&stderr_capture);
+		let path = tree.path().to_str().expect("utf8 path");
+		let (code, capture) = run_util::<FdCli>(&["haystack", path], "", tree.path());
+
+		assert_eq!(code, 0);
 		assert!(
-			String::from_utf8_lossy(&out).contains("haystack.txt"),
-			"stdout should list the match: {out:?}"
+			capture.out().contains("haystack.txt"),
+			"stdout should list the match: {:?}",
+			capture.stdout()
 		);
-		assert!(err.is_empty(), "stderr should stay clean on success: {err:?}");
-		let _ = fs::remove_dir_all(&tree);
+		assert!(capture.err().is_empty(), "stderr should stay clean: {:?}", capture.stderr());
 	}
 
 	#[test]
@@ -1818,20 +1690,16 @@ mod tests {
 		// silently from SIGPIPE; the builtin must map BrokenPipe to exit 141
 		// with no stderr diagnostic.
 		let tree = seeded_tree("epipe");
+		let path = tree.path().to_str().expect("utf8 path");
+		let cli = FdCli::try_parse_from(["fd", "haystack", path]).expect("argv");
+		let (mut host, capture) = Host::for_test("fd", "", tree.path());
 		let (reader, writer) = std::io::pipe().expect("pipe");
 		drop(reader); // downstream reader (e.g. `head`) already exited
-		let mut stdout = OpenFile::from(writer);
-		let (stderr_capture, stderr_file) = capture_file("stderr-epipe");
-		let mut stderr = OpenFile::from(stderr_file);
-		let cancelled = AtomicBool::new(false);
-		let argv = ["fd", "haystack", tree.to_str().expect("utf8 path")]
-			.map(std::ffi::OsString::from)
-			.to_vec();
-		let code = run_fd_sync(argv, tree.clone(), &mut stdout, &mut stderr, &cancelled);
-		drop(stderr);
+		host.stdout = OpenFile::from(writer);
+
+		let code = cli.run(&mut host);
+
 		assert_eq!(code, 141, "BrokenPipe must map to 128+SIGPIPE");
-		let err = read_all(&stderr_capture);
-		assert!(err.is_empty(), "stderr must stay clean on a broken pipe: {err:?}");
-		let _ = fs::remove_dir_all(&tree);
+		assert!(capture.err().is_empty(), "stderr must stay clean on a broken pipe");
 	}
 }
