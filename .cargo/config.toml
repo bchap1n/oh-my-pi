@@ -24,7 +24,7 @@ CMAKE_GENERATOR = "Ninja"
 # every rlib. Measured on a reqwest-sized graph: 196 MB -> 130 MB target dir at
 # identical build times. Requires the pinned nightly (rust-toolchain.toml).
 # The accepted spelling is toolchain-coupled: cargo took `"DoNotEmbed"` before
-# ~2026-08 and a bare boolean after. This matches nightly-2026-08-08; if you
-# bump rust-toolchain.toml backwards, switch to `"DoNotEmbed"`.
+# ~2026-08 and a bare boolean after. This matches the pinned nightly-2026-07-28
+# (rust-toolchain.toml); if you bump it to >= 2026-08, switch to `false`.
 [unstable]
-embed-metadata = false
+embed-metadata = "DoNotEmbed"
