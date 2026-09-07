@@ -1199,7 +1199,8 @@ fn same_worktree_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 }
 
 #[cfg(not(unix))]
-const fn same_worktree_file(_: &fs::Metadata, _: &fs::Metadata) -> bool {
+#[allow(clippy::missing_const_for_fn, reason = "matches non-const unix signature")]
+fn same_worktree_file(_: &fs::Metadata, _: &fs::Metadata) -> bool {
 	false
 }
 
@@ -1248,7 +1249,8 @@ fn is_executable(meta: &fs::Metadata) -> bool {
 	meta.permissions().mode() & 0o111 != 0
 }
 #[cfg(not(unix))]
-const fn is_executable(_: &fs::Metadata) -> bool {
+#[allow(clippy::missing_const_for_fn, reason = "matches non-const unix signature")]
+fn is_executable(_: &fs::Metadata) -> bool {
 	false
 }
 

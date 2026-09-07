@@ -1,21 +1,28 @@
 use std::{
 	collections::BTreeMap,
-	fs::{self, File, OpenOptions},
-	io::{Read, Write},
+	fs::{self, OpenOptions},
+	io::Write,
 	path::{Path, PathBuf},
-	process::{Command, Stdio},
 	sync::atomic::{AtomicU64, Ordering},
+};
+#[cfg(any(unix, test))]
+use std::{
+	fs::File,
+	io::Read,
+	process::{Command, Stdio},
 	thread,
 	time::Duration,
 };
 
-use anyhow::{Context as _, Result, anyhow, bail};
+#[cfg(any(unix, test))]
+use anyhow::bail;
+use anyhow::{Context as _, Result, anyhow};
 
 use crate::task::CancelToken;
 
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 const COMMAND_OUTPUT_LIMIT: u64 = 1024 * 1024;
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(20);
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
@@ -27,7 +34,7 @@ pub(super) struct Context {
 	pub(super) directory:     PathBuf,
 	pub(super) callback_path: PathBuf,
 	pub(super) helper_path:   PathBuf,
-	#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+	#[cfg_attr(not(any(unix, test)), allow(dead_code, reason = "used by unix oauth backends"))]
 	pub(super) home:          PathBuf,
 	pub(super) env:           BTreeMap<String, String>,
 	pub(super) cancel:        CancelToken,
@@ -87,7 +94,7 @@ impl Context {
 
 	/// Run one executable directly with bounded output and cooperative tree
 	/// cleanup.
-	#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+	#[cfg(any(unix, test))]
 	pub(super) fn run(&self, program: &Path, args: &[String]) -> Result<String> {
 		self.check()?;
 		#[cfg(test)]
@@ -169,7 +176,7 @@ impl Context {
 	}
 }
 
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 fn private_output_file(path: &Path) -> Result<File> {
 	let mut options = OpenOptions::new();
 	options.write(true).create_new(true);
@@ -183,14 +190,14 @@ fn private_output_file(path: &Path) -> Result<File> {
 		.with_context(|| format!("failed to create {}", path.display()))
 }
 
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 fn file_len(path: &Path) -> Result<u64> {
 	Ok(fs::metadata(path)
 		.with_context(|| format!("failed to inspect {}", path.display()))?
 		.len())
 }
 
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 fn read_bounded(path: &Path) -> Result<Vec<u8>> {
 	let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
 	let mut bytes = Vec::new();
@@ -204,7 +211,7 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>> {
 	Ok(bytes)
 }
 
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 fn terminate_child_tree(child: &mut std::process::Child) {
 	if let Ok(pid) = i32::try_from(child.id())
 		&& let Some(process) = pi_shell::process::Process::from_pid(pid)
@@ -214,7 +221,7 @@ fn terminate_child_tree(child: &mut std::process::Child) {
 	let _ = child.kill();
 }
 
-#[cfg_attr(windows, allow(dead_code, reason = "used only by the macOS/Linux backends"))]
+#[cfg(any(unix, test))]
 fn remove_command_outputs(stdout: &Path, stderr: &Path) {
 	let _ = fs::remove_file(stdout);
 	let _ = fs::remove_file(stderr);

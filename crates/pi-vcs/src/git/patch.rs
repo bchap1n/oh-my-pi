@@ -1380,7 +1380,8 @@ fn worktree_file_mode(metadata: &fs::Metadata, _index_mode: Mode) -> Mode {
 }
 
 #[cfg(not(unix))]
-const fn worktree_file_mode(_metadata: &fs::Metadata, index_mode: Mode) -> Mode {
+#[allow(clippy::missing_const_for_fn, reason = "matches non-const unix signature")]
+fn worktree_file_mode(_metadata: &fs::Metadata, index_mode: Mode) -> Mode {
 	index_mode
 }
 

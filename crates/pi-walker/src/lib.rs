@@ -2217,7 +2217,8 @@ impl<E> EntryVisitor for CollectVisitor<E> {
 	}
 }
 
-const fn root_device_for_options(root: &Path, options: WalkOptions) -> Option<u64> {
+#[allow(clippy::missing_const_for_fn, reason = "calls non-const root_device_id on unix")]
+fn root_device_for_options(root: &Path, options: WalkOptions) -> Option<u64> {
 	if options.same_file_system {
 		root_device_id(root, options.follow_links)
 	} else {
@@ -2312,11 +2313,8 @@ impl DirScratch {
 	}
 
 	#[cfg(not(unix))]
-	#[allow(
-		clippy::unused_self,
-		reason = "method shape is shared with the Unix scratch implementation"
-	)]
-	fn name<'a>(&self, entry: &'a DirEntryRecord) -> &'a OsStr {
+	#[allow(clippy::unused_self, reason = "matches unix signature where self is used")]
+	fn name<'a>(&'a self, entry: &'a DirEntryRecord) -> &'a OsStr {
 		&entry.name
 	}
 }
@@ -4090,21 +4088,20 @@ mod platform {
 					.map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
 					.collect();
 				let name = OsString::from_wide(&name_units);
-				if let Some(file_type) = file_type_from_attributes(info.FileAttributes) {
-					let size = if detail == WalkDetail::Full && file_type == FileType::File {
-						Some(info.EndOfFile.max(0) as f64)
-					} else {
-						None
-					};
-					let mtime = if detail == WalkDetail::Full {
-						mtime_from_filetime(info.LastWriteTime)
-					} else {
-						None
-					};
-					let entry = RawDirEntry { name: name.into(), file_type, mtime, size };
-					if emit(entry).map_err(ReadDirError::Walk)? == ReadDirControl::Stop {
-						return Ok(ReadDirControl::Stop);
-					}
+				let file_type = file_type_from_attributes(info.FileAttributes);
+				let size = if detail == WalkDetail::Full && file_type == FileType::File {
+					Some(info.EndOfFile.max(0) as f64)
+				} else {
+					None
+				};
+				let mtime = if detail == WalkDetail::Full {
+					mtime_from_filetime(info.LastWriteTime)
+				} else {
+					None
+				};
+				let entry = RawDirEntry { name: name.into(), file_type, mtime, size };
+				if emit(entry).map_err(ReadDirError::Walk)? == ReadDirControl::Stop {
+					return Ok(ReadDirControl::Stop);
 				}
 				if info.NextEntryOffset == 0 {
 					break;
@@ -4138,17 +4135,13 @@ mod platform {
 		}
 	}
 
-	#[allow(
-		clippy::unnecessary_wraps,
-		reason = "keeps the Windows helper shape aligned with conditional file-type handling"
-	)]
-	const fn file_type_from_attributes(attributes: u32) -> Option<FileType> {
+	const fn file_type_from_attributes(attributes: u32) -> FileType {
 		if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-			Some(FileType::Symlink)
+			FileType::Symlink
 		} else if attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
-			Some(FileType::Dir)
+			FileType::Dir
 		} else {
-			Some(FileType::File)
+			FileType::File
 		}
 	}
 

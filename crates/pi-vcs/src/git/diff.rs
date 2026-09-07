@@ -1125,7 +1125,8 @@ fn is_executable(metadata: &std::fs::Metadata) -> bool {
 }
 
 #[cfg(not(unix))]
-const fn is_executable(_metadata: &std::fs::Metadata) -> bool {
+#[allow(clippy::missing_const_for_fn, reason = "matches non-const unix signature")]
+fn is_executable(_metadata: &std::fs::Metadata) -> bool {
 	false
 }
 

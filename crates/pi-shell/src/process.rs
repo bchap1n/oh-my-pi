@@ -1876,7 +1876,7 @@ fn prune_exited(spawned: &mut Vec<SpawnedProcess>) {
 #[must_use]
 #[allow(
 	clippy::missing_const_for_fn,
-	reason = "delegates to platform-specific process-group implementation"
+	reason = "calls non-const platform_process_group_alive on unix"
 )]
 fn process_group_alive(pgid: i32) -> bool {
 	if pgid <= 0 {
@@ -1901,7 +1901,6 @@ const fn platform_process_group_alive(_pgid: i32) -> bool {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(unix)]
 	use super::*;
 
 	/// The harness pid must be the only protected pid. Including its recorded

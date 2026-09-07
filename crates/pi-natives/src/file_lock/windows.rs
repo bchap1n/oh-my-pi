@@ -24,7 +24,8 @@ pub fn try_acquire(path: &str) -> io::Result<Option<PlatformFileLock>> {
 	// The name's existence, not thread-affine mutex ownership, is the lease.
 	// A handle can therefore be released from a different native worker thread.
 	// Contenders see ERROR_ALREADY_EXISTS and immediately close their handle.
-	// SAFETY: `SetLastError` has no preconditions.
+	// SAFETY: SetLastError(0) safely resets the thread-local error status before
+	// the call.
 	unsafe { SetLastError(0) };
 	// SAFETY: the attributes pointer is null, and `wide_name` is a live,
 	// NUL-terminated UTF-16 string for the duration of the call.

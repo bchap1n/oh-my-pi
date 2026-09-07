@@ -37,13 +37,10 @@ impl Win32Ax {
 		}
 	}
 
-	#[cfg_attr(
-		not(test),
-		allow(
-			clippy::missing_const_for_fn,
-			clippy::unnecessary_wraps,
-			reason = "the #[cfg(test)] Err arm requires the Result return type"
-		)
+	#[allow(
+		clippy::missing_const_for_fn,
+		clippy::unnecessary_wraps,
+		reason = "in test configuration handle matching can return an error"
 	)]
 	fn element(handle: &AxHandle) -> CoreResult<&UIElement> {
 		match handle {
@@ -68,6 +65,7 @@ impl Win32Ax {
 		self.displays.as_deref()
 	}
 
+	#[allow(clippy::suboptimal_flops, reason = "clarity of physical coordinate calculation")]
 	fn logical_bounds(&mut self, left: i32, top: i32, right: i32, bottom: i32) -> Option<AxBounds> {
 		let displays = self.display_layout()?;
 		let display = displays
@@ -76,9 +74,9 @@ impl Win32Ax {
 				let physical_x = f64::from(display.x) * display.scale;
 				let physical_y = f64::from(display.y) * display.scale;
 				f64::from(left) >= physical_x
-					&& f64::from(left) < f64::from(display.width).mul_add(display.scale, physical_x)
+					&& f64::from(left) < physical_x + f64::from(display.width) * display.scale
 					&& f64::from(top) >= physical_y
-					&& f64::from(top) < f64::from(display.height).mul_add(display.scale, physical_y)
+					&& f64::from(top) < physical_y + f64::from(display.height) * display.scale
 			})
 			.or_else(|| displays.first())?;
 		let scale = display.scale.max(f64::EPSILON);

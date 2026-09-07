@@ -177,14 +177,18 @@ pub(super) fn restore(context: &Context, snapshot: &Snapshot) -> Result<()> {
 	let marker_current = read_value(&layout.root, MARKER_NAME)?;
 
 	if marker_current == *marker_before {
-		for (entry, owned_value) in snapshot.values.iter().zip(owned.iter()).take(3) {
-			let current = read_value(&entry.path, &entry.name)?;
-			if current == Some(owned_value.clone()) && current != entry.value {
+		#[allow(
+			clippy::needless_range_loop,
+			reason = "indexes both snapshot.values and owned concurrently"
+		)]
+		for index in 0..3 {
+			let current = read_value(&snapshot.values[index].path, &snapshot.values[index].name)?;
+			if current == Some(owned[index].clone()) && current != snapshot.values[index].value {
 				bail!(
 					"Windows OAuth callback ownership marker is absent while HKCU\\{} still has this \
 					 transaction's value {:?}",
-					entry.path,
-					entry.name
+					snapshot.values[index].path,
+					snapshot.values[index].name
 				);
 			}
 		}
@@ -200,10 +204,15 @@ pub(super) fn restore(context: &Context, snapshot: &Snapshot) -> Result<()> {
 	}
 
 	let mut conflicts = Vec::new();
-	for (entry, owned_value) in snapshot.values.iter().zip(owned.iter()).take(3) {
+	#[allow(
+		clippy::needless_range_loop,
+		reason = "indexes both snapshot.values and owned concurrently"
+	)]
+	for index in 0..3 {
 		context.check()?;
+		let entry = &snapshot.values[index];
 		let current = read_value(&entry.path, &entry.name)?;
-		if current == Some(owned_value.clone()) {
+		if current == Some(owned[index].clone()) {
 			restore_value(entry)?;
 		} else if current != entry.value {
 			conflicts.push(format!("HKCU\\{} value {:?}", entry.path, entry.name));
@@ -276,6 +285,10 @@ fn validate_identity(context: &Context) -> Result<()> {
 	Ok(())
 }
 
+#[allow(
+	clippy::suspicious_operation_groupings,
+	reason = "layout fields are paths and values, not keys"
+)]
 fn validate_snapshot(context: &Context, snapshot: &Snapshot) -> Result<Layout> {
 	validate_identity(context)?;
 	let layout = Layout::new(&context.scheme);
@@ -286,7 +299,7 @@ fn validate_snapshot(context: &Context, snapshot: &Snapshot) -> Result<Layout> {
 	{
 		bail!("invalid Windows OAuth callback registry snapshot identity");
 	}
-	if (snapshot.keys.len(), snapshot.values.len()) != (layout.paths.len(), layout.values.len()) {
+	if snapshot.keys.len() != layout.paths.len() || snapshot.values.len() != layout.values.len() {
 		bail!("invalid Windows OAuth callback registry snapshot size");
 	}
 	for (index, (entry, expected)) in snapshot.keys.iter().zip(layout.paths.iter()).enumerate() {
@@ -502,7 +515,7 @@ fn decode_reg_sz(value: &RegValue<'_>) -> Option<OsString> {
 		.as_chunks::<2>()
 		.0
 		.iter()
-		.map(|chunk| u16::from_le_bytes(*chunk))
+		.map(|&[b0, b1]| u16::from_le_bytes([b0, b1]))
 		.collect::<Vec<_>>();
 	while units.last() == Some(&0) {
 		units.pop();
@@ -529,8 +542,9 @@ fn reg_type(value_type: u32) -> Result<RegType> {
 }
 
 fn notify_association_changed() {
-	// SAFETY: `SHCNE_ASSOCCHANGED` takes no item pointers; the flag and null
-	// pointer arguments are valid for this notification.
+	// SAFETY: SHChangeNotify with SHCNE_ASSOCCHANGED and null pointers safely
+	// notifies the Windows shell of file association changes without dereferencing
+	// invalid memory.
 	unsafe {
 		SHChangeNotify(
 			SHCNE_ASSOCCHANGED as i32,
@@ -548,10 +562,9 @@ fn effective_command(scheme: &str) -> Result<OsString> {
 		.collect::<Vec<_>>();
 	let mut output = vec![0u16; 32_768];
 	let mut length = output.len() as u32;
-	// SAFETY: `ASSOCSTR_COMMAND` is a static NUL-terminated wide string,
-	// `association` is a live NUL-terminated UTF-16 buffer, the key is null
-	// as required by `ASSOCF_IS_PROTOCOL`, and `output` is valid for `length`
-	// wide characters with `length` passed by reference.
+	// SAFETY: `association` is null-terminated, `output` is allocated with `length`
+	// capacity, and AssocQueryStringW writes within the bounds specified by `&mut
+	// length`.
 	let result = unsafe {
 		AssocQueryStringW(
 			ASSOCF_IS_PROTOCOL | ASSOCF_NOFIXUPS | ASSOCF_VERIFY,
