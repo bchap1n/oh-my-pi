@@ -4,7 +4,7 @@
  */
 import { untilAborted } from "@oh-my-pi/pi-utils";
 import { getOrCreateClient, notifySaved, sendRequest, syncContent } from "../../lsp/client";
-import { applyTextEditsToString } from "../../lsp/edits";
+import { applyFormattedEdits } from "../../lsp/edits";
 import { resolveFormatOptions } from "../../lsp/format-options";
 import type { Diagnostic, LinterClient, LspClient, ServerConfig, TextEdit } from "../../lsp/types";
 import { fileToUri } from "../../lsp/utils";
@@ -56,7 +56,7 @@ export class LspLinterClient implements LinterClient {
 			return content;
 		}
 
-		return applyTextEditsToString(content, edits);
+		return applyFormattedEdits(content, edits);
 	}
 
 	async lint(filePath: string, signal?: AbortSignal): Promise<Diagnostic[]> {
