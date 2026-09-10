@@ -60,7 +60,7 @@ describe("applyFormattedEdits", () => {
 	});
 
 	it("still applies the formatter's code changes", () => {
-		const original = "function A {\r\n    Write-Host \"x\"\r\n}\r\n";
+		const original = 'function A {\r\n    Write-Host "x"\r\n}\r\n';
 		const formatted = "function A {\r\n    Write-Host 'x'\r\n}\r\n";
 
 		expect(applyFormattedEdits(original, wholeFile(formatted))).toBe(formatted);
