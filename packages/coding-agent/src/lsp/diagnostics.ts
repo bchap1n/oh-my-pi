@@ -6,7 +6,7 @@ import { throwIfAborted } from "../tools/tool-errors";
 import { getOrCreateClient, sendRequest, supportsDocumentDiagnostics, waitForProjectLoaded } from "./client";
 import { getLinterClient } from "./clients";
 import { hasRootMarkerAncestor } from "./config";
-import { applyTextEditsToString } from "./edits";
+import { applyFormattedEdits } from "./edits";
 import { resolveFormatOptions } from "./format-options";
 import { isProjectAwareLspServer } from "./servers";
 import type {
@@ -597,8 +597,9 @@ export async function formatContent(
 				return { content, failed: false, unsupported: false };
 			}
 
-			// Apply edits in-memory and return
-			return { content: applyTextEditsToString(content, edits), failed: false, unsupported: false };
+			// Apply edits in-memory and return, preserving the document's own
+			// line endings so formatting never rewrites them.
+			return { content: applyFormattedEdits(content, edits), failed: false, unsupported: false };
 		} catch {
 			// A formatter was available but the request failed;
 			// record the failure and try the next server

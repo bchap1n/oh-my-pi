@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEexist, isEnoent, logger } from "@oh-my-pi/pi-utils";
+import { detectLineEnding, normalizeToLF, restoreLineEndings } from "../edit/normalize";
 import { formatPathRelativeToCwd } from "../tools/path-utils";
 import { ToolError } from "../tools/tool-errors";
 import type {
@@ -47,6 +48,29 @@ export function applyTextEditsToString(content: string, edits: TextEdit[]): stri
 	}
 
 	return lines.join("\n");
+}
+
+/**
+ * Apply a formatter's edits while preserving the document's own line endings.
+ *
+ * A formatter answers with whole-document text in its own style — PowerShell
+ * Editor Services joins with `Environment.NewLine`, so it returns CRLF even for
+ * an LF document. Writing that answer back verbatim flips an LF file to CRLF on
+ * its first format, and a formatter that echoes a trailing carriage return
+ * yields `\r\r\n` on every line.
+ *
+ * Normalizing the result to LF first, then re-encoding with the line ending the
+ * document already used, makes format-on-write byte-stable and idempotent while
+ * still applying the formatter's code changes.
+ *
+ * A carriage-return run before a line feed collapses to a single break. A
+ * document that already carries `\r\r\n` therefore normalizes to one line
+ * ending rather than gaining a phantom blank line, which is what a plain LF
+ * normalization would produce for that input.
+ */
+export function applyFormattedEdits(content: string, edits: TextEdit[]): string {
+	const applied = applyTextEditsToString(content, edits);
+	return restoreLineEndings(normalizeToLF(applied.replace(/\r+\n/g, "\n")), detectLineEnding(content));
 }
 
 function comparePosition(a: Position, b: Position): number {
