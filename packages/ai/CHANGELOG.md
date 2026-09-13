@@ -19,13 +19,13 @@
 - 400-request debug dumps now redact provider-specific auth headers (`x-goog-api-key`, `x-amz-security-token`, and any header whose name carries a key/token/secret), not just a fixed allow-list, so a shared dump can no longer leak a live API key ([#12007](https://github.com/can1357/oh-my-pi/issues/12007)).
 
 ## [18.1.20] - 2026-09-13
+### Added
+
+- Added an opt-in RFC 9207 authorization-server-issuer hook to the OAuth callback loopback: flows can now override `onAuthorizeRedirect(url)` to reject an authorization redirect whose `iss` does not match the discovered issuer before the code is redeemed, closing a mixed-up-authorization-server attack on multi-issuer MCP hosts ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
 
 ### Fixed
 
 - Fixed Windows OAuth sign-in failing on every attempt after an upgrade when a previous run left a stale native callback registration behind; handlers registered by older binaries are now recognized as owned and rolled back instead of blocking recovery ([#11967](https://github.com/can1357/oh-my-pi/pull/11967) by [@H4vC](https://github.com/H4vC)).
-### Added
-
-- Added an opt-in RFC 9207 authorization-server-issuer hook to the OAuth callback loopback: flows can now override `onAuthorizeRedirect(url)` to reject an authorization redirect whose `iss` does not match the discovered issuer before the code is redeemed, closing a mixed-up-authorization-server attack on multi-issuer MCP hosts ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
 
 ## [18.1.19] - 2026-09-12
 

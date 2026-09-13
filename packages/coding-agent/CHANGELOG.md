@@ -80,6 +80,9 @@
 - First-use Chromium installation and browser operations no longer consume Eval's runtime timeout or reset its kernel while waiting.
 - Browser startup reuses a successful system-Chrome fallback instead of retrying an unavailable download during the same open.
 - Browser clicks and other interactions no longer stall when OMP-owned tabs are in the background, including after worker timeout recovery.
+### Added
+
+- MCP OAuth flows now reject authorization callbacks whose RFC 9207 `iss` (issuer) does not match the authorization server the flow started against, aborting the login before any token exchange; legacy authorization servers that omit `iss` continue to work. This complements the MCP protocol 2026-07-28 work in [#8167](https://github.com/can1357/oh-my-pi/pull/8167) by [@art-wiedzmin](https://github.com/art-wiedzmin) ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
 
 ## [18.1.20] - 2026-09-13
 
@@ -106,11 +109,6 @@
 - Fixed prompts awaiting setup crossing a fork, branch, or tree-navigation commit, multi-question extension dialogs moving later questions to a replacement Collab room, and stale rooms blocking `/collab` or `/join` after a failed session change ([#11908](https://github.com/can1357/oh-my-pi/pull/11908) by [@alphastorm](https://github.com/alphastorm)).
 - Fixed background task cards missing their final completion or failure after an early result or live-session focus replay.
 - Ranged reads on Windows no longer intermittently open the selector-suffixed path when filesystem probes return transient errors ([#11284](https://github.com/can1357/oh-my-pi/issues/11284)).
-
-## [18.1.19] - 2026-09-12
-### Added
-
-- MCP OAuth flows now reject authorization callbacks whose RFC 9207 `iss` (issuer) does not match the authorization server the flow started against, aborting the login before any token exchange; legacy authorization servers that omit `iss` continue to work. This complements the MCP protocol 2026-07-28 work in [#8167](https://github.com/can1357/oh-my-pi/pull/8167) by [@art-wiedzmin](https://github.com/art-wiedzmin) ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
 
 ## [18.1.19] - 2026-09-12
 
