@@ -11,6 +11,7 @@ import type { OAuthController, OAuthCredentials } from "@oh-my-pi/pi-ai/oauth/ty
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import type { FetchImpl } from "@oh-my-pi/pi-ai/types";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
+import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
 import { getActiveProfile } from "@oh-my-pi/pi-utils/dirs";
 import type { OAuthCredential } from "../session/auth-storage";
 import { buildWellKnownUrls } from "./oauth-discovery";
@@ -297,15 +298,19 @@ function filterResourceIndicator(
 }
 
 /**
- * Strip ANSI/control characters (C0, C1, DEL) and cap length before an
- * untrusted issuer value is embedded in an error message that render paths
- * surface verbatim. Both operand of the comparison can be attacker-influenced:
- * `iss` arrives on the callback and `expected` can come from a server-supplied
- * metadata/error body.
+ * Make an untrusted issuer safe for TUI display. Both operands of the
+ * comparison can be attacker-influenced (`iss` arrives on the callback,
+ * `expected` can come from a server-supplied metadata/error body), and the
+ * message reaches `ctx.showError()` verbatim. Strip ANSI/C0/C1/DEL
+ * control characters, flatten to a single line (tabs would indent the line,
+ * newlines would split it), then width-truncate with the shared helpers.
+ * Comparison itself always runs on the raw values.
  */
 function sanitizeIssuerForDisplay(value: string): string {
-	const stripped = sanitizeText(value);
-	return stripped.length > 120 ? `${stripped.slice(0, 120)}...` : stripped;
+	const flattened = sanitizeText(value)
+		.replace(/[\r\n]+/g, " ")
+		.trim();
+	return replaceTabs(truncateToWidth(flattened, TRUNCATE_LENGTHS.LONG));
 }
 
 export interface MCPOAuthConfig {

@@ -1349,8 +1349,8 @@ describe("mcp oauth flow", () => {
 			it("strips ANSI/C1 controls and truncates both untrusted issuer values in the error", () => {
 				// `iss` arrives on the callback; `expected` can come from a
 				// server-supplied metadata/error body. Both are attacker-influenced.
-				const hostileIss = `https://attacker.example.com/${"x".repeat(200)}\u001b]0;pwned\u0007\u009b1;2H`;
-				const hostileExpected = `https://evil.example.com/${"y".repeat(200)}\u009b2J`;
+				const hostileIss = `https://attacker.example.com/${"x".repeat(200)}\u001b]0;pwned\u0007\u009b1;2H\n\t\rINJECTED`;
+				const hostileExpected = `https://evil.example.com/${"y".repeat(200)}\u009b2J\n\tALSO-INJECTED`;
 				const flow = issuerFlow({ issuerUrl: hostileExpected });
 				try {
 					flow.onAuthorizeRedirect(callbackUrl(hostileIss));
@@ -1362,6 +1362,13 @@ describe("mcp oauth flow", () => {
 					// Neither ESC (C0) nor CSI (C1) may survive into the message.
 					expect(message).not.toContain("\u001b");
 					expect(message).not.toContain("\u009b");
+					// The message must stay one line so it cannot split or indent
+					// the TUI error render.
+					expect(message).not.toContain("\n");
+					expect(message).not.toContain("\r");
+					expect(message).not.toContain("\t");
+					expect(message).not.toContain("INJECTED");
+					expect(message.split("\n")).toHaveLength(1);
 					expect(message.length).toBeLessThan(300);
 				}
 			});
