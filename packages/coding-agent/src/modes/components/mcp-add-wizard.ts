@@ -820,6 +820,10 @@ export class MCPAddWizard extends OverlayPanel {
 				break;
 			case "oauth-error":
 				this.#currentStep = "oauth-auth-url";
+				// Editing the endpoints (the only reason to go back here)
+				// invalidates metadata discovered for the previous ones.
+				this.#state.oauthIssuerUrl = "";
+				this.#state.oauthIssParameterSupported = false;
 				break;
 			case "confirm":
 				this.#currentStep = "scope";
