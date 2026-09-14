@@ -680,6 +680,11 @@ export class MCPAddWizard extends OverlayPanel {
 				if (this.#selectedIndex === 0) {
 					void this.#launchOAuthFlow();
 				} else {
+					// Editing the endpoints invalidates metadata discovered for
+					// the previous ones; keep stale issuer data from rejecting
+					// callbacks against the newly entered server.
+					this.#state.oauthIssuerUrl = "";
+					this.#state.oauthIssParameterSupported = false;
 					this.#currentStep = "oauth-auth-url";
 				}
 				return;

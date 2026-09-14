@@ -171,7 +171,13 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 			// Check for OAuth endpoints in error body
 			if (errorBody.oauth || errorBody.authorization || errorBody.auth) {
 				const oauthData = (errorBody.oauth || errorBody.authorization || errorBody.auth) as Record<string, unknown>;
-				const endpoints = readEndpointsFromObject(oauthData);
+				// The outer error object may carry transport-level security
+				// metadata (e.g. `authorization_response_iss_parameter_supported`)
+				// that the nested endpoint object omits.
+				const endpoints = readEndpointsFromObject({
+					...errorBody,
+					...oauthData,
+				});
 				if (endpoints) {
 					return {
 						...endpoints,
