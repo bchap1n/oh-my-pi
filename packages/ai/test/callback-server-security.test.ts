@@ -351,6 +351,24 @@ describe("OAuthCallbackFlow callback security", () => {
 		}
 	});
 
+	it("accepts a pasted bare authorization code even when the server advertises iss support", async () => {
+		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
+		const abort = new AbortController();
+		flow.ctrl = {
+			onAuth: () => {},
+			onManualCodeInput: async () => "legitimate-code",
+			signal: abort.signal,
+		};
+		const login = flow.login();
+		void login.catch(() => undefined);
+		try {
+			expect((await login).access).toBe("legitimate-code");
+		} finally {
+			abort.abort("test cleanup");
+			await login.catch(() => undefined);
+		}
+	});
+
 	it("accepts a pasted bare query string whose RFC 9207 issuer matches", async () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();

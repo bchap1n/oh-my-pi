@@ -695,16 +695,20 @@ export abstract class OAuthCallbackFlow {
 							try {
 								redirectUrl = new URL(trimmed);
 							} catch {
-								// parseCallbackInput also accepts `?code=...`, bare
-								// `code=...`, and `#code=...` fragments; validate those
-								// against a dummy base so the hook still sees the pasted
-								// parameters (a leading `#` is a fragment delimiter, so
-								// normalize it to `?` before wrapping).
-								const bare = trimmed.replace(/^[?#]/, "");
-								try {
-									redirectUrl = new URL(`http://localhost/?${bare}`);
-								} catch {
-									redirectUrl = undefined;
+								// parseCallbackInput also accepts query-string callback
+								// forms (`?code=...&iss=...`, bare `code=...`, and
+								// `#code=...` fragments); validate those against a dummy
+								// base so the hook still sees the pasted parameters (a
+								// leading `#` is a fragment delimiter, so normalize it to
+								// `?` before wrapping). A bare pasted code is not a
+								// callback URL - leave it on the no-redirect path.
+								if (/code=/.test(trimmed)) {
+									const bare = trimmed.replace(/^[?#]/, "");
+									try {
+										redirectUrl = new URL(`http://localhost/?${bare}`);
+									} catch {
+										redirectUrl = undefined;
+									}
 								}
 							}
 							if (redirectUrl) this.onAuthorizeRedirect?.(redirectUrl);
