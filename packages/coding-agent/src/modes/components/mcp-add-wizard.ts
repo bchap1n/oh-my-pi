@@ -57,6 +57,7 @@ interface MCPAddWizardOAuthOptions {
 	stripSameOriginResource?: boolean;
 	registrationUrl?: string;
 	issuerUrl?: string;
+	issParameterSupported?: boolean;
 	/**
 	 * External cancellation source. Aborting it tears down the in-flight OAuth
 	 * flow and surfaces a neutral cancellation error. The wizard wires its own
@@ -78,6 +79,7 @@ interface WizardState {
 	oauthTokenUrl: string;
 	oauthRegistrationUrl: string;
 	oauthIssuerUrl: string;
+	oauthIssParameterSupported: boolean;
 	oauthClientId: string;
 	oauthClientSecret: string;
 	oauthScopes: string;
@@ -112,6 +114,7 @@ export class MCPAddWizard extends OverlayPanel {
 		oauthTokenUrl: "",
 		oauthRegistrationUrl: "",
 		oauthIssuerUrl: "",
+		oauthIssParameterSupported: false,
 		oauthClientId: "",
 		oauthClientSecret: "",
 		oauthScopes: "",
@@ -1019,6 +1022,7 @@ export class MCPAddWizard extends OverlayPanel {
 					this.#state.oauthTokenUrl = oauth.tokenUrl;
 					this.#state.oauthRegistrationUrl = oauth.registrationUrl || "";
 					this.#state.oauthIssuerUrl = oauth.issuerUrl || "";
+					this.#state.oauthIssParameterSupported = oauth.issParameterSupported === true;
 					this.#state.oauthClientId = oauth.clientId || "";
 					this.#state.oauthScopes = oauth.scopes || "";
 					this.#state.oauthResource = oauth.resource || (this.#state.transport === "stdio" ? "" : this.#state.url);
@@ -1195,6 +1199,7 @@ export class MCPAddWizard extends OverlayPanel {
 					serverUrl: this.#state.url || undefined,
 					registrationUrl: this.#state.oauthRegistrationUrl || undefined,
 					issuerUrl: this.#state.oauthIssuerUrl || undefined,
+					issParameterSupported: this.#state.oauthIssParameterSupported || undefined,
 					resource: oauthResource || undefined,
 					stripSameOriginResource: oauthResourceIsFallback,
 					abortSignal: this.#oauthAbort.signal,

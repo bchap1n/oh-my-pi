@@ -695,15 +695,14 @@ export abstract class OAuthCallbackFlow {
 							try {
 								redirectUrl = new URL(trimmed);
 							} catch {
-								// parseCallbackInput also accepts `?code=...&iss=...`
-								// query strings; validate those against a dummy base so
-								// the hook still sees the pasted parameters.
-								if (trimmed.startsWith("?")) {
-									try {
-										redirectUrl = new URL(`http://localhost/${trimmed}`);
-									} catch {
-										redirectUrl = undefined;
-									}
+								// parseCallbackInput also accepts `?code=...` and bare
+								// `code=...` query strings; validate those against a
+								// dummy base so the hook still sees the pasted params.
+								const query = trimmed.startsWith("?") ? trimmed : `?${trimmed}`;
+								try {
+									redirectUrl = new URL(`http://localhost/${query}`);
+								} catch {
+									redirectUrl = undefined;
 								}
 							}
 							if (redirectUrl) this.onAuthorizeRedirect?.(redirectUrl);

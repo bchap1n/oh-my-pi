@@ -314,4 +314,40 @@ describe("OAuthCallbackFlow callback security", () => {
 			await login.catch(() => undefined);
 		}
 	});
+
+	it("rejects a pasted bare query string whose RFC 9207 issuer does not match", async () => {
+		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
+		const abort = new AbortController();
+		flow.ctrl = {
+			onAuth: () => {},
+			onManualCodeInput: async () => "code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
+			signal: abort.signal,
+		};
+		const login = flow.login();
+		void login.catch(() => undefined);
+		try {
+			await expect(login).rejects.toThrow("OAuth iss mismatch");
+		} finally {
+			abort.abort("test cleanup");
+			await login.catch(() => undefined);
+		}
+	});
+
+	it("accepts a pasted bare query string whose RFC 9207 issuer matches", async () => {
+		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
+		const abort = new AbortController();
+		flow.ctrl = {
+			onAuth: () => {},
+			onManualCodeInput: async () => "code=legitimate-code&iss=https%3A%2F%2Fauth.example.com%2Ftenant",
+			signal: abort.signal,
+		};
+		const login = flow.login();
+		void login.catch(() => undefined);
+		try {
+			expect((await login).access).toBe("legitimate-code");
+		} finally {
+			abort.abort("test cleanup");
+			await login.catch(() => undefined);
+		}
+	});
 });

@@ -295,15 +295,6 @@ function filterResourceIndicator(
 	return resource;
 }
 
-/** Origin of a URL string, `undefined` when it does not parse. */
-function authorizationEndpointOrigin(value: string): string | undefined {
-	try {
-		return new URL(value).origin;
-	} catch {
-		return undefined;
-	}
-}
-
 export interface MCPOAuthConfig {
 	/** Authorization endpoint URL */
 	authorizationUrl: string;
@@ -441,16 +432,11 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		}
 		const expected = this.config.issuerUrl;
 		if (expected === undefined) {
-			// Endpoint-only fallback: reject only a cross-origin `iss`, the
-			// mixed-up-AS signal; path-scoped issuers of the same origin pass.
-			const issOrigin = authorizationEndpointOrigin(iss);
-			const authOrigin = authorizationEndpointOrigin(this.config.authorizationUrl);
-			if (issOrigin !== undefined && authOrigin !== undefined && issOrigin !== authOrigin) {
-				throw new AIError.OAuthError(
-					`OAuth iss mismatch (RFC 9207): expected ${this.config.authorizationUrl}, got ${iss}`,
-					{ kind: "device-auth" },
-				);
-			}
+			// No discovered issuer: there is no identifier to compare against,
+			// and OAuth metadata does not require the endpoint origin to match
+			// the issuer origin, so any origin-based inference can reject
+			// legitimate callbacks. Fail open; the exact guard covers servers
+			// that publish metadata.
 			return;
 		}
 		// RFC 9207 `iss` is the issuer identifier (RFC 8414 `issuer`); distinct

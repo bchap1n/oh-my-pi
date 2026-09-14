@@ -1342,10 +1342,11 @@ describe("mcp oauth flow", () => {
 				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant"))).not.toThrow();
 			});
 
-			// Without a discovered issuer the flow cannot know a path-scoped
-			// issuer, so it rejects only a cross-origin `iss` (the mixed-up-AS
-			// signal) and accepts same-origin variants.
-			it("without a discovered issuer, rejects only a cross-origin iss", () => {
+			// Without a discovered issuer there is no identifier to compare
+			// against and no reliable origin inference (OAuth metadata does not
+			// require endpoint and issuer origins to match), so the guard fails
+			// open; the exact guard covers metadata-publishing servers.
+			it("without a discovered issuer, fails open for any iss", () => {
 				const flow = new MCPOAuthFlow(
 					{
 						authorizationUrl: "https://legacy.example.com/oauth/authorize",
@@ -1354,10 +1355,7 @@ describe("mcp oauth flow", () => {
 					{},
 				);
 				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://legacy.example.com/tenant"))).not.toThrow();
-				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://legacy.example.com"))).not.toThrow();
-				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://attacker.example.com"))).toThrow(
-					/OAuth iss mismatch.*RFC 9207/,
-				);
+				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://attacker.example.com"))).not.toThrow();
 			});
 		});
 	});
