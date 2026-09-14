@@ -1285,12 +1285,16 @@ describe("mcp oauth flow", () => {
 		});
 
 		describe("RFC 9207 issuer validation", () => {
-			function issuerFlow() {
+			type IssuerFlowConfig = Partial<
+				Pick<ConstructorParameters<typeof MCPOAuthFlow>[0], "issuerUrl" | "issParameterSupported">
+			>;
+			function issuerFlow(overrides: IssuerFlowConfig = {}) {
 				return new MCPOAuthFlow(
 					{
 						authorizationUrl: "https://auth.example.com/tenant/oauth/authorize",
 						tokenUrl: "https://auth.example.com/tenant/oauth/token",
 						issuerUrl: "https://auth.example.com/tenant",
+						...overrides,
 					},
 					{},
 				);
@@ -1311,10 +1315,11 @@ describe("mcp oauth flow", () => {
 				).not.toThrow();
 			});
 
-			it("accepts an iss that differs from the issuer only by trailing slash", () => {
-				expect(() =>
-					issuerFlow().onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant/")),
-				).not.toThrow();
+			it("rejects an iss that differs from the issuer only by trailing slash", () => {
+				// Distinct issuer identifiers stay distinct - exact comparison.
+				expect(() => issuerFlow().onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant/"))).toThrow(
+					/OAuth iss mismatch.*RFC 9207/,
+				);
 			});
 
 			it("rejects a callback whose iss names a different authorization server", () => {
@@ -1327,7 +1332,20 @@ describe("mcp oauth flow", () => {
 				expect(() => issuerFlow().onAuthorizeRedirect(callbackUrl())).not.toThrow();
 			});
 
-			it("falls back to the endpoint origin when discovery produced no issuer", () => {
+			it("rejects a missing iss when the server advertises RFC 9207 support", () => {
+				const flow = issuerFlow({ issParameterSupported: true });
+				expect(() => flow.onAuthorizeRedirect(callbackUrl())).toThrow(/OAuth iss mismatch.*RFC 9207.*omitted/);
+			});
+
+			it("accepts a matching iss when the server advertises RFC 9207 support", () => {
+				const flow = issuerFlow({ issParameterSupported: true });
+				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant"))).not.toThrow();
+			});
+
+			// Without a discovered issuer the flow cannot know a path-scoped
+			// issuer, so it rejects only a cross-origin `iss` (the mixed-up-AS
+			// signal) and accepts same-origin variants.
+			it("without a discovered issuer, rejects only a cross-origin iss", () => {
 				const flow = new MCPOAuthFlow(
 					{
 						authorizationUrl: "https://legacy.example.com/oauth/authorize",
@@ -1335,12 +1353,10 @@ describe("mcp oauth flow", () => {
 					},
 					{},
 				);
+				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://legacy.example.com/tenant"))).not.toThrow();
 				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://legacy.example.com"))).not.toThrow();
-				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://legacy.example.com/oauth/authorize"))).toThrow(
-					/OAuth iss mismatch/,
-				);
 				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://attacker.example.com"))).toThrow(
-					/OAuth iss mismatch/,
+					/OAuth iss mismatch.*RFC 9207/,
 				);
 			});
 		});

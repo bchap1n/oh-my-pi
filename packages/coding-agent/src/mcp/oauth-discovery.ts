@@ -16,6 +16,8 @@ export interface OAuthEndpoints {
 	tokenUrl: string;
 	/** Authorization-server issuer URL used for metadata discovery. */
 	issuerUrl?: string;
+	/** True when metadata advertises RFC 9207 `iss` support (`authorization_response_iss_parameter_supported`). */
+	issParameterSupported?: boolean;
 	clientId?: string;
 	/** Dynamic client registration endpoint advertised by the authorization server. */
 	registrationUrl?: string;
@@ -37,6 +39,11 @@ function readRegistrationUrl(metadata: Record<string, unknown>): string | undefi
 function readIssuerUrl(metadata: Record<string, unknown>): string | undefined {
 	const value = metadata.issuer ?? metadata.issuer_url ?? metadata.issuerUrl;
 	return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+/** RFC 9207: whether the AS advertises that it always sends the `iss` parameter. */
+function readIssParameterSupported(metadata: Record<string, unknown>): boolean {
+	return metadata.authorization_response_iss_parameter_supported === true;
 }
 
 export interface AuthDetectionResult {
@@ -500,6 +507,7 @@ export async function discoverOAuthEndpoints(
 				authorizationUrl: String(metadata.authorization_endpoint),
 				tokenUrl: String(metadata.token_endpoint),
 				issuerUrl: readIssuerUrl(metadata),
+				issParameterSupported: readIssParameterSupported(metadata),
 				registrationUrl: readRegistrationUrl(metadata),
 				clientId:
 					typeof metadata.client_id === "string"
@@ -525,6 +533,7 @@ export async function discoverOAuthEndpoints(
 					authorizationUrl: oauthData.authorization_url || String(oauthData.authorizationUrl),
 					tokenUrl: oauthData.token_url || String(oauthData.tokenUrl),
 					issuerUrl: readIssuerUrl(oauthData) ?? readIssuerUrl(metadata),
+					issParameterSupported: readIssParameterSupported(oauthData) || readIssParameterSupported(metadata),
 					registrationUrl: readRegistrationUrl(oauthData),
 					clientId:
 						typeof oauthData.client_id === "string"

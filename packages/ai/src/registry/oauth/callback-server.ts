@@ -109,7 +109,13 @@ export interface OAuthCallbackFlowOptions {
 	nativeScheme?: boolean;
 }
 
-function parseNativeCallback(input: string, redirectUri: string, expectedState: string): CallbackResult {
+interface NativeCallback {
+	result: CallbackResult;
+	/** The raw redirect URL, for flows that validate callback parameters. */
+	url: URL;
+}
+
+function parseNativeCallback(input: string, redirectUri: string, expectedState: string): NativeCallback {
 	let callback: URL;
 	let expected: URL;
 	try {
@@ -141,7 +147,7 @@ function parseNativeCallback(input: string, redirectUri: string, expectedState: 
 		throw new AIError.OAuthError("OAuth application callback omitted the authorization code", {
 			kind: "device-auth",
 		});
-	return { code, state };
+	return { result: { code, state }, url: callback };
 }
 
 /**
@@ -252,7 +258,7 @@ export abstract class OAuthCallbackFlow {
 			: await this.#startCallbackServer(state);
 		const receiverAbort = new AbortController();
 		let receiver: NativeSchemeCallbackReceiver | undefined;
-		let nativeCallback: Promise<CallbackResult> | undefined;
+		let nativeCallback: Promise<NativeCallback> | undefined;
 
 		try {
 			this.#throwIfCancelled();
@@ -634,7 +640,7 @@ export abstract class OAuthCallbackFlow {
 	/**
 	 * Wait for OAuth callback or manual input (whichever comes first).
 	 */
-	#waitForCallback(expectedState: string, nativeCallback?: Promise<CallbackResult>): Promise<CallbackResult> {
+	#waitForCallback(expectedState: string, nativeCallback?: Promise<NativeCallback>): Promise<CallbackResult> {
 		const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT);
 		const settledSignal = new AbortController();
 		const signals = this.ctrl.signal
@@ -659,7 +665,16 @@ export abstract class OAuthCallbackFlow {
 		const callbackPromise = callback.promise;
 
 		const candidates = [callbackPromise];
-		if (nativeCallback) candidates.push(nativeCallback);
+		if (nativeCallback) {
+			// Native-scheme redirects carry the same `iss` exposure as the
+			// loopback callback; run the guard before accepting the result.
+			candidates.push(
+				nativeCallback.then(native => {
+					this.onAuthorizeRedirect?.(native.url);
+					return native.result;
+				}),
+			);
+		}
 		if (this.ctrl.onManualCodeInput) {
 			const requestManualInput = this.ctrl.onManualCodeInput;
 			const manualPromise = (async (): Promise<CallbackResult> => {
@@ -670,15 +685,26 @@ export abstract class OAuthCallbackFlow {
 							const parsed = parseCallbackInput(input);
 							if (!parsed.code) return null;
 							if (expectedState && parsed.state && parsed.state !== expectedState) return null;
-							// A pasted redirect URL carries the same RFC 9207 `iss`
-							// exposure as the loopback callback - run the same guard
-							// (a bare pasted code has no URL to validate). A mismatch
-							// rejects the login, mirroring the callback path.
+							// A pasted redirect URL (or bare query string) carries the
+							// same RFC 9207 `iss` exposure as the loopback callback -
+							// run the same guard (a bare pasted code has nothing to
+							// validate). A mismatch rejects the login, mirroring the
+							// callback path.
+							const trimmed = input.trim();
 							let redirectUrl: URL | undefined;
 							try {
-								redirectUrl = new URL(input.trim());
+								redirectUrl = new URL(trimmed);
 							} catch {
-								redirectUrl = undefined;
+								// parseCallbackInput also accepts `?code=...&iss=...`
+								// query strings; validate those against a dummy base so
+								// the hook still sees the pasted parameters.
+								if (trimmed.startsWith("?")) {
+									try {
+										redirectUrl = new URL(`http://localhost/${trimmed}`);
+									} catch {
+										redirectUrl = undefined;
+									}
+								}
 							}
 							if (redirectUrl) this.onAuthorizeRedirect?.(redirectUrl);
 							return { code: parsed.code, state: parsed.state ?? "" };

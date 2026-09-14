@@ -12,7 +12,7 @@ import * as AIError from "@oh-my-pi/pi-ai/error";
 import type { FetchImpl } from "@oh-my-pi/pi-ai/types";
 import { getActiveProfile } from "@oh-my-pi/pi-utils/dirs";
 import type { OAuthCredential } from "../session/auth-storage";
-import { buildWellKnownUrls, normalizeIssuerUrl } from "./oauth-discovery";
+import { buildWellKnownUrls } from "./oauth-discovery";
 
 /** Credential-id prefix for OMP-managed MCP OAuth credentials keyed by profile and server URL. */
 const MCP_OAUTH_URL_CREDENTIAL_PREFIX = "mcp_oauth:";
@@ -295,14 +295,10 @@ function filterResourceIndicator(
 	return resource;
 }
 
-/**
- * Origin of the authorization endpoint, used as the RFC 9207 expected issuer
- * only when discovery produced no issuer. `undefined` when the configured
- * URL does not parse - the caller then fails closed.
- */
-function authorizationEndpointOrigin(authorizationUrl: string): string | undefined {
+/** Origin of a URL string, `undefined` when it does not parse. */
+function authorizationEndpointOrigin(value: string): string | undefined {
 	try {
-		return new URL(authorizationUrl).origin;
+		return new URL(value).origin;
 	} catch {
 		return undefined;
 	}
@@ -315,6 +311,8 @@ export interface MCPOAuthConfig {
 	tokenUrl: string;
 	/** Authorization-server issuer URL used for metadata discovery. */
 	issuerUrl?: string;
+	/** True when discovery metadata advertised RFC 9207 `iss` support. */
+	issParameterSupported?: boolean;
 	/** Dynamic client registration endpoint advertised by the authorization server. */
 	registrationUrl?: string;
 	/** Client ID (optional when already embedded in authorization URL) */
@@ -423,24 +421,44 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 	/**
 	 * Reject a redirected callback whose `iss` (issuer) does not match the
 	 * authorization server this flow started against (RFC 9207). Compares
-	 * against the discovered RFC 8414 issuer when metadata produced one,
-	 * falling back to the authorization endpoint origin. When `iss`
-	 * is absent (a legacy AS), continue.
+	 * exactly against the discovered RFC 8414 issuer when metadata produced
+	 * one. Without a discovered issuer, only an `iss` that names a *different*
+	 * origin than the authorization endpoint is rejected - a guessed origin
+	 * cannot distinguish path-scoped issuers, so exact matching there would
+	 * reject legitimate callbacks. When the server advertised RFC 9207 support
+	 * a missing `iss` is itself a tamper signal.
 	 */
 	override onAuthorizeRedirect(url: URL): void {
 		const iss = url.searchParams.get("iss");
-		if (iss === null) return; // Legacy AS - no issuer claim, continue.
-		// RFC 9207 `iss` carries the AS issuer identifier (RFC 8414 `issuer`),
-		// which is generally not the authorize-endpoint URL - compare against
-		// the discovered issuer when metadata produced one, else fall back to
-		// the authorization endpoint origin.
-		const rawExpected = this.config.issuerUrl ?? authorizationEndpointOrigin(this.config.authorizationUrl);
-		const expected = rawExpected === undefined ? undefined : normalizeIssuerUrl(rawExpected);
-		if (expected === undefined || normalizeIssuerUrl(iss) !== expected) {
-			throw new AIError.OAuthError(
-				`OAuth iss mismatch (RFC 9207): expected ${rawExpected ?? this.config.authorizationUrl}, got ${iss}`,
-				{ kind: "device-auth" },
-			);
+		if (iss === null) {
+			if (this.config.issParameterSupported) {
+				throw new AIError.OAuthError(
+					"OAuth iss mismatch (RFC 9207): server advertises iss support but the callback omitted it",
+					{ kind: "device-auth" },
+				);
+			}
+			return; // Legacy AS - no issuer claim, continue.
+		}
+		const expected = this.config.issuerUrl;
+		if (expected === undefined) {
+			// Endpoint-only fallback: reject only a cross-origin `iss`, the
+			// mixed-up-AS signal; path-scoped issuers of the same origin pass.
+			const issOrigin = authorizationEndpointOrigin(iss);
+			const authOrigin = authorizationEndpointOrigin(this.config.authorizationUrl);
+			if (issOrigin !== undefined && authOrigin !== undefined && issOrigin !== authOrigin) {
+				throw new AIError.OAuthError(
+					`OAuth iss mismatch (RFC 9207): expected ${this.config.authorizationUrl}, got ${iss}`,
+					{ kind: "device-auth" },
+				);
+			}
+			return;
+		}
+		// RFC 9207 `iss` is the issuer identifier (RFC 8414 `issuer`); distinct
+		// identifiers may differ only by trailing slash, so compare exactly.
+		if (iss !== expected) {
+			throw new AIError.OAuthError(`OAuth iss mismatch (RFC 9207): expected ${expected}, got ${iss}`, {
+				kind: "device-auth",
+			});
 		}
 	}
 
