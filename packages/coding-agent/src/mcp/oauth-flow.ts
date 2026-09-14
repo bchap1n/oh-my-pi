@@ -10,6 +10,7 @@ import { OAuthCallbackFlow } from "@oh-my-pi/pi-ai/oauth/callback-server";
 import type { OAuthController, OAuthCredentials } from "@oh-my-pi/pi-ai/oauth/types";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import type { FetchImpl } from "@oh-my-pi/pi-ai/types";
+import { sanitizeText } from "@oh-my-pi/pi-utils";
 import { getActiveProfile } from "@oh-my-pi/pi-utils/dirs";
 import type { OAuthCredential } from "../session/auth-storage";
 import { buildWellKnownUrls } from "./oauth-discovery";
@@ -296,13 +297,14 @@ function filterResourceIndicator(
 }
 
 /**
- * Strip control characters (including terminal escapes) and cap length
- * before an untrusted issuer value is embedded in an error message that
- * render paths surface verbatim.
+ * Strip ANSI/control characters (C0, C1, DEL) and cap length before an
+ * untrusted issuer value is embedded in an error message that render paths
+ * surface verbatim. Both operand of the comparison can be attacker-influenced:
+ * `iss` arrives on the callback and `expected` can come from a server-supplied
+ * metadata/error body.
  */
-function sanitizeIssuerText(value: string): string {
-	// eslint-disable-next-line no-control-regex
-	const stripped = value.replace(/[\u0000-\u001f\u007f]/g, "");
+function sanitizeIssuerForDisplay(value: string): string {
+	const stripped = sanitizeText(value);
 	return stripped.length > 120 ? `${stripped.slice(0, 120)}...` : stripped;
 }
 
@@ -454,7 +456,7 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		// identifiers may differ only by trailing slash, so compare exactly.
 		if (iss !== expected) {
 			throw new AIError.OAuthError(
-				`OAuth iss mismatch (RFC 9207): expected ${expected}, got ${sanitizeIssuerText(iss)}`,
+				`OAuth iss mismatch (RFC 9207): expected ${sanitizeIssuerForDisplay(expected)}, got ${sanitizeIssuerForDisplay(iss)}`,
 				{ kind: "device-auth" },
 			);
 		}

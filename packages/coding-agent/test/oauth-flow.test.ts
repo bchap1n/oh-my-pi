@@ -1346,19 +1346,31 @@ describe("mcp oauth flow", () => {
 			// against and no reliable origin inference (OAuth metadata does not
 			// require endpoint and issuer origins to match), so the guard fails
 			// open; the exact guard covers metadata-publishing servers.
-			it("strips control characters and truncates untrusted issuer text in the error", () => {
-				const flow = issuerFlow();
-				const evil = `https://attacker.example.com/${"x".repeat(200)}\u001b]0;pwned\u0007`;
+			it("strips ANSI/C1 controls and truncates both untrusted issuer values in the error", () => {
+				// `iss` arrives on the callback; `expected` can come from a
+				// server-supplied metadata/error body. Both are attacker-influenced.
+				const hostileIss = `https://attacker.example.com/${"x".repeat(200)}\u001b]0;pwned\u0007\u009b1;2H`;
+				const hostileExpected = `https://evil.example.com/${"y".repeat(200)}\u009b2J`;
+				const flow = issuerFlow({ issuerUrl: hostileExpected });
 				try {
-					flow.onAuthorizeRedirect(callbackUrl(evil));
+					flow.onAuthorizeRedirect(callbackUrl(hostileIss));
 					throw new Error("expected rejection");
 				} catch (error) {
 					expect(error).toBeInstanceOf(Error);
 					const message = (error as Error).message;
 					expect(message).toContain("OAuth iss mismatch");
+					// Neither ESC (C0) nor CSI (C1) may survive into the message.
 					expect(message).not.toContain("\u001b");
+					expect(message).not.toContain("\u009b");
 					expect(message.length).toBeLessThan(300);
 				}
+			});
+
+			it("rejects a mismatching iss even when the expected issuer is hostile text", () => {
+				const flow = issuerFlow({ issuerUrl: `https://evil.example.com/\u009b2J` });
+				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant"))).toThrow(
+					/OAuth iss mismatch.*RFC 9207/,
+				);
 			});
 
 			it("without a discovered issuer, fails open for any iss", () => {
