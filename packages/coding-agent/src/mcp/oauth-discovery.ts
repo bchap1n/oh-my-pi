@@ -507,7 +507,7 @@ export async function discoverOAuthEndpoints(
 				authorizationUrl: String(metadata.authorization_endpoint),
 				tokenUrl: String(metadata.token_endpoint),
 				issuerUrl: readIssuerUrl(metadata),
-				issParameterSupported: readIssParameterSupported(metadata),
+				...(readIssParameterSupported(metadata) ? { issParameterSupported: true } : {}),
 				registrationUrl: readRegistrationUrl(metadata),
 				clientId:
 					typeof metadata.client_id === "string"
@@ -533,7 +533,9 @@ export async function discoverOAuthEndpoints(
 					authorizationUrl: oauthData.authorization_url || String(oauthData.authorizationUrl),
 					tokenUrl: oauthData.token_url || String(oauthData.tokenUrl),
 					issuerUrl: readIssuerUrl(oauthData) ?? readIssuerUrl(metadata),
-					issParameterSupported: readIssParameterSupported(oauthData) || readIssParameterSupported(metadata),
+					...(readIssParameterSupported(oauthData) || readIssParameterSupported(metadata)
+						? { issParameterSupported: true }
+						: {}),
 					registrationUrl: readRegistrationUrl(oauthData),
 					clientId:
 						typeof oauthData.client_id === "string"
