@@ -669,6 +669,7 @@ export class MCPAddWizard extends OverlayPanel {
 				const authMethods: Array<"oauth" | "manual"> = ["oauth", "manual"];
 				this.#state.authMethod = authMethods[this.#selectedIndex];
 				if (this.#state.authMethod === "oauth") {
+					this.#clearDiscoveredIssuer();
 					this.#currentStep = "oauth-auth-url";
 				} else {
 					// manual
@@ -681,10 +682,8 @@ export class MCPAddWizard extends OverlayPanel {
 					void this.#launchOAuthFlow();
 				} else {
 					// Editing the endpoints invalidates metadata discovered for
-					// the previous ones; keep stale issuer data from rejecting
-					// callbacks against the newly entered server.
-					this.#state.oauthIssuerUrl = "";
-					this.#state.oauthIssParameterSupported = false;
+					// the previous ones.
+					this.#clearDiscoveredIssuer();
 					this.#currentStep = "oauth-auth-url";
 				}
 				return;
@@ -745,6 +744,20 @@ export class MCPAddWizard extends OverlayPanel {
 		}
 	}
 
+	/**
+	 * Drop issuer metadata discovered for the previous endpoints.
+	 *
+	 * Called on every entry to the authorization-URL step: once the user can
+	 * change the endpoints, the previously discovered `issuerUrl` and
+	 * `issParameterSupported` no longer describe the server being configured,
+	 * so forwarding them would reject valid callbacks (or accept tampered
+	 * ones) once the OAuth flow starts.
+	 */
+	#clearDiscoveredIssuer(): void {
+		this.#state.oauthIssuerUrl = "";
+		this.#state.oauthIssParameterSupported = false;
+	}
+
 	#goBack(): void {
 		// Navigate to previous step
 		switch (this.#currentStep) {
@@ -796,6 +809,7 @@ export class MCPAddWizard extends OverlayPanel {
 			case "oauth-scopes":
 				// Go back through OAuth flow
 				if (this.#currentStep === "oauth-token-url") {
+					this.#clearDiscoveredIssuer();
 					this.#currentStep = "oauth-auth-url";
 				} else if (this.#currentStep === "oauth-client-id") {
 					this.#currentStep = "oauth-token-url";
@@ -819,11 +833,10 @@ export class MCPAddWizard extends OverlayPanel {
 				}
 				break;
 			case "oauth-error":
-				this.#currentStep = "oauth-auth-url";
 				// Editing the endpoints (the only reason to go back here)
 				// invalidates metadata discovered for the previous ones.
-				this.#state.oauthIssuerUrl = "";
-				this.#state.oauthIssParameterSupported = false;
+				this.#clearDiscoveredIssuer();
+				this.#currentStep = "oauth-auth-url";
 				break;
 			case "confirm":
 				this.#currentStep = "scope";
