@@ -295,6 +295,17 @@ function filterResourceIndicator(
 	return resource;
 }
 
+/**
+ * Strip control characters (including terminal escapes) and cap length
+ * before an untrusted issuer value is embedded in an error message that
+ * render paths surface verbatim.
+ */
+function sanitizeIssuerText(value: string): string {
+	// eslint-disable-next-line no-control-regex
+	const stripped = value.replace(/[\u0000-\u001f\u007f]/g, "");
+	return stripped.length > 120 ? `${stripped.slice(0, 120)}...` : stripped;
+}
+
 export interface MCPOAuthConfig {
 	/** Authorization endpoint URL */
 	authorizationUrl: string;
@@ -442,9 +453,10 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		// RFC 9207 `iss` is the issuer identifier (RFC 8414 `issuer`); distinct
 		// identifiers may differ only by trailing slash, so compare exactly.
 		if (iss !== expected) {
-			throw new AIError.OAuthError(`OAuth iss mismatch (RFC 9207): expected ${expected}, got ${iss}`, {
-				kind: "device-auth",
-			});
+			throw new AIError.OAuthError(
+				`OAuth iss mismatch (RFC 9207): expected ${expected}, got ${sanitizeIssuerText(iss)}`,
+				{ kind: "device-auth" },
+			);
 		}
 	}
 

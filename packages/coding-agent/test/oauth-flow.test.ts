@@ -1346,6 +1346,21 @@ describe("mcp oauth flow", () => {
 			// against and no reliable origin inference (OAuth metadata does not
 			// require endpoint and issuer origins to match), so the guard fails
 			// open; the exact guard covers metadata-publishing servers.
+			it("strips control characters and truncates untrusted issuer text in the error", () => {
+				const flow = issuerFlow();
+				const evil = `https://attacker.example.com/${"x".repeat(200)}\u001b]0;pwned\u0007`;
+				try {
+					flow.onAuthorizeRedirect(callbackUrl(evil));
+					throw new Error("expected rejection");
+				} catch (error) {
+					expect(error).toBeInstanceOf(Error);
+					const message = (error as Error).message;
+					expect(message).toContain("OAuth iss mismatch");
+					expect(message).not.toContain("\u001b");
+					expect(message.length).toBeLessThan(300);
+				}
+			});
+
 			it("without a discovered issuer, fails open for any iss", () => {
 				const flow = new MCPOAuthFlow(
 					{

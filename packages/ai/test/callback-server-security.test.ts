@@ -333,6 +333,31 @@ describe("OAuthCallbackFlow callback security", () => {
 		}
 	});
 
+	it("HTML-escapes untrusted issuer text in the callback failure page", async () => {
+		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
+		const abort = new AbortController();
+		const authFired = Promise.withResolvers<OAuthAuthInfo>();
+		flow.ctrl = { onAuth: info => authFired.resolve(info), signal: abort.signal };
+		const login = flow.login();
+		void login.catch(() => undefined);
+		const info = await authFired.promise;
+		try {
+			const authUrl = new URL(info.url);
+			const redirectUri = authUrl.searchParams.get("redirect_uri");
+			const state = authUrl.searchParams.get("state");
+			if (!redirectUri || !state) throw new Error("OAuth test flow did not advertise its callback parameters");
+			const injected = `${redirectUri}?code=x&state=${encodeURIComponent(state)}&iss=${encodeURIComponent("</script><script>alert(1)</script>")}`;
+			const response = await fetch(injected);
+			const page = await response.text();
+			expect(response.status).toBe(500);
+			expect(page).not.toContain("</script><script>alert");
+			await expect(login).rejects.toThrow("OAuth iss mismatch");
+		} finally {
+			abort.abort("test cleanup");
+			await login.catch(() => undefined);
+		}
+	});
+
 	it("rejects a pasted hash-prefixed fragment whose RFC 9207 issuer does not match", async () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();

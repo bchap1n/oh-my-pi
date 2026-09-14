@@ -115,6 +115,16 @@ interface NativeCallback {
 	url: URL;
 }
 
+/**
+ * JSON-serialize callback state for embedding in the response HTML's
+ * `<script type="application/json">` element. `JSON.stringify` leaves `<`
+ * (and therefore `</script>`) intact, so escape the two characters that
+ * could terminate the script element before interpolation.
+ */
+function serializeCallbackState(state: unknown): string {
+	return JSON.stringify(state).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
+}
+
 function parseNativeCallback(input: string, redirectUri: string, expectedState: string): NativeCallback {
 	let callback: URL;
 	let expected: URL;
@@ -607,7 +617,7 @@ export abstract class OAuthCallbackFlow {
 				return new Response(
 					(templateHtml as unknown as string).replaceAll(
 						"__OAUTH_STATE__",
-						JSON.stringify({ ok: false as const, error: message }),
+						serializeCallbackState({ ok: false as const, error: message }),
 					),
 					{ status: 500, headers: { "Content-Type": "text/html" } },
 				);
@@ -629,7 +639,7 @@ export abstract class OAuthCallbackFlow {
 		}
 
 		return new Response(
-			(templateHtml as unknown as string).replaceAll("__OAUTH_STATE__", JSON.stringify(resultState)),
+			(templateHtml as unknown as string).replaceAll("__OAUTH_STATE__", serializeCallbackState(resultState)),
 			{
 				status: resultState.ok ? 200 : 500,
 				headers: { "Content-Type": "text/html" },
