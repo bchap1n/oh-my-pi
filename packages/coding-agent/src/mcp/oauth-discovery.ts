@@ -137,6 +137,7 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 			authorizationUrl,
 			tokenUrl,
 			issuerUrl: readIssuerUrl(obj),
+			...(readIssParameterSupported(obj) ? { issParameterSupported: true } : {}),
 			registrationUrl: readRegistrationUrl(obj),
 			clientId,
 			scopes,
