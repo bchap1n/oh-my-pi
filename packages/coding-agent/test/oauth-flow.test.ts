@@ -1288,7 +1288,7 @@ describe("mcp oauth flow", () => {
 			type IssuerFlowConfig = Partial<
 				Pick<ConstructorParameters<typeof MCPOAuthFlow>[0], "issuerUrl" | "issParameterSupported">
 			>;
-			function issuerFlow(overrides: IssuerFlowConfig = {}) {
+			function issuerFlow(overrides: IssuerFlowConfig = {}, iss?: string): MCPOAuthFlow {
 				return new MCPOAuthFlow(
 					{
 						authorizationUrl: "https://auth.example.com/tenant/oauth/authorize",
@@ -1300,19 +1300,56 @@ describe("mcp oauth flow", () => {
 				);
 			}
 
+			/** Drive a full `login()` whose callback URL carries the given `iss`. */
+			async function loginWithIss(iss: string | undefined, overrides: IssuerFlowConfig = {}) {
+				let tokenRequestBody = "";
+				const flow = new MCPOAuthFlow(
+					{
+						authorizationUrl: "https://auth.example.com/tenant/oauth/authorize",
+						tokenUrl: "https://provider.example/token",
+						issuerUrl: "https://auth.example.com/tenant",
+						clientId: "client-id",
+						callbackPort: 14571,
+						fetch: mockProviderTokenEndpoint(body => {
+							tokenRequestBody = body;
+						}),
+						...overrides,
+					},
+					{
+						onAuth: info => {
+							const authUrl = new URL(info.url);
+							const redirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
+							const state = authUrl.searchParams.get("state") ?? "";
+							const callback = new URL("http://127.0.0.1:14571/callback");
+							callback.searchParams.set("code", "code");
+							callback.searchParams.set("state", state);
+							if (iss !== undefined) callback.searchParams.set("iss", iss);
+							queueMicrotask(() => {
+								void completeLocalOAuthCallback(callback.toString());
+							});
+						},
+						signal: AbortSignal.timeout(1_000),
+					},
+				);
+				const credentials = await flow.login();
+				return { credentials, tokenRequestBody };
+			}
+
 			function callbackUrl(iss?: string): URL {
 				const url = new URL("http://127.0.0.1:3000/callback?code=code&state=state");
 				if (iss !== undefined) url.searchParams.set("iss", iss);
 				return url;
 			}
 
-			it("accepts a callback whose iss matches the discovered issuer, not the endpoint", () => {
+			it("accepts a callback whose iss matches the discovered issuer, not the endpoint", async () => {
 				// The authorize endpoint appends a path to the issuer; comparing
 				// against the endpoint would falsely reject this legitimate
-				// callback.
-				expect(() =>
-					issuerFlow().onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant")),
-				).not.toThrow();
+				// callback. Asserted through `login()` so the accepted code must
+				// actually reach the token exchange.
+				const { credentials, tokenRequestBody } = await loginWithIss("https://auth.example.com/tenant");
+				const tokenParams = new URLSearchParams(tokenRequestBody);
+				expect(credentials.access).toBe("access-token");
+				expect(tokenParams.get("code")).toBe("code");
 			});
 
 			it("rejects an iss that differs from the issuer only by trailing slash", () => {
@@ -1328,18 +1365,40 @@ describe("mcp oauth flow", () => {
 				);
 			});
 
-			it("accepts a legacy callback that omits iss", () => {
-				expect(() => issuerFlow().onAuthorizeRedirect(callbackUrl())).not.toThrow();
+			it("accepts a legacy callback that omits iss", async () => {
+				const { credentials, tokenRequestBody } = await loginWithIss(undefined);
+				const tokenParams = new URLSearchParams(tokenRequestBody);
+				expect(credentials.access).toBe("access-token");
+				expect(tokenParams.get("code")).toBe("code");
 			});
 
-			it("rejects a missing iss when the server advertises RFC 9207 support", () => {
-				const flow = issuerFlow({ issParameterSupported: true });
-				expect(() => flow.onAuthorizeRedirect(callbackUrl())).toThrow(/OAuth iss mismatch.*RFC 9207.*omitted/);
+			it("rejects a missing iss when the server advertises RFC 9207 support", async () => {
+				const error = await loginWithIss(undefined, { issParameterSupported: true }).catch(
+					(caught: unknown) => caught,
+				);
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toMatch(/OAuth iss mismatch.*RFC 9207.*omitted/);
 			});
 
-			it("accepts a matching iss when the server advertises RFC 9207 support", () => {
-				const flow = issuerFlow({ issParameterSupported: true });
-				expect(() => flow.onAuthorizeRedirect(callbackUrl("https://auth.example.com/tenant"))).not.toThrow();
+			it("accepts a matching iss when the server advertises RFC 9207 support", async () => {
+				const { credentials, tokenRequestBody } = await loginWithIss("https://auth.example.com/tenant", {
+					issParameterSupported: true,
+				});
+				const tokenParams = new URLSearchParams(tokenRequestBody);
+				expect(credentials.access).toBe("access-token");
+				expect(tokenParams.get("code")).toBe("code");
+			});
+
+			it("rejects any iss when the server advertises support without an issuer", async () => {
+				// Strict support + no discovered issuer is a malformed configuration:
+				// omitted `iss` is rejected above, so accepting any `iss` here would
+				// redeem codes from an arbitrary issuer via a malicious metadata doc.
+				const error = await loginWithIss("https://attacker.example.com", {
+					issParameterSupported: true,
+					issuerUrl: undefined,
+				}).catch((caught: unknown) => caught);
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toMatch(/OAuth iss mismatch.*RFC 9207.*no issuer/);
 			});
 
 			// Without a discovered issuer there is no identifier to compare

@@ -450,11 +450,21 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		}
 		const expected = this.config.issuerUrl;
 		if (expected === undefined) {
-			// No discovered issuer: there is no identifier to compare against,
-			// and OAuth metadata does not require the endpoint origin to match
-			// the issuer origin, so any origin-based inference can reject
-			// legitimate callbacks. Fail open; the exact guard covers servers
-			// that publish metadata.
+			if (this.config.issParameterSupported) {
+				// Advertising strict RFC 9207 support while omitting the issuer is
+				// a malformed configuration: an omitted `iss` would be rejected
+				// above, so accepting any `iss` here would let a malicious
+				// metadata document redeem codes from an arbitrary issuer.
+				throw new AIError.OAuthError(
+					"OAuth iss mismatch (RFC 9207): server advertises iss support but discovery found no issuer to compare against",
+					{ kind: "device-auth" },
+				);
+			}
+			// No discovered issuer and no strict flag: there is no identifier to
+			// compare against, and OAuth metadata does not require the endpoint
+			// origin to match the issuer origin, so any origin-based inference
+			// can reject legitimate callbacks. Fail open; the exact guard covers
+			// servers that publish metadata.
 			return;
 		}
 		// RFC 9207 `iss` is the issuer identifier (RFC 8414 `issuer`); distinct
