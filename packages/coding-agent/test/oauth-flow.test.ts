@@ -1288,7 +1288,7 @@ describe("mcp oauth flow", () => {
 			type IssuerFlowConfig = Partial<
 				Pick<ConstructorParameters<typeof MCPOAuthFlow>[0], "issuerUrl" | "issParameterSupported">
 			>;
-			function issuerFlow(overrides: IssuerFlowConfig = {}, iss?: string): MCPOAuthFlow {
+			function issuerFlow(overrides: IssuerFlowConfig = {}): MCPOAuthFlow {
 				return new MCPOAuthFlow(
 					{
 						authorizationUrl: "https://auth.example.com/tenant/oauth/authorize",
@@ -1318,9 +1318,10 @@ describe("mcp oauth flow", () => {
 					{
 						onAuth: info => {
 							const authUrl = new URL(info.url);
-							const redirectUri = authUrl.searchParams.get("redirect_uri") ?? "";
 							const state = authUrl.searchParams.get("state") ?? "";
-							const callback = new URL("http://127.0.0.1:14571/callback");
+							const advertised = authUrl.searchParams.get("redirect_uri") ?? "";
+							const port = new URL(advertised).port || "80";
+							const callback = new URL(`http://127.0.0.1:${port}/callback`);
 							callback.searchParams.set("code", "code");
 							callback.searchParams.set("state", state);
 							if (iss !== undefined) callback.searchParams.set("iss", iss);
