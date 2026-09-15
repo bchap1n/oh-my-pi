@@ -281,7 +281,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => { },
+			onAuth: () => {},
 			onManualCodeInput: async () =>
 				"https://localhost/callback?code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
 			signal: abort.signal,
@@ -300,7 +300,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => { },
+			onAuth: () => {},
 			onManualCodeInput: async () =>
 				"https://localhost/callback?code=legitimate-code&iss=https%3A%2F%2Fauth.example.com%2Ftenant",
 			signal: abort.signal,
@@ -319,7 +319,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => { },
+			onAuth: () => {},
 			onManualCodeInput: async () => "code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
 			signal: abort.signal,
 		};
@@ -362,7 +362,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => { },
+			onAuth: () => {},
 			onManualCodeInput: async () => "#code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
 			signal: abort.signal,
 		};
@@ -387,7 +387,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		};
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => { },
+			onAuth: () => {},
 			onManualCodeInput: async () => "legitimate-code",
 			signal: abort.signal,
 		};
@@ -405,7 +405,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => { },
+			onAuth: () => {},
 			onManualCodeInput: async () => "code=legitimate-code&iss=https%3A%2F%2Fauth.example.com%2Ftenant",
 			signal: abort.signal,
 		};
