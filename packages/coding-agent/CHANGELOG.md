@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP OAuth flows now reject authorization callbacks whose RFC 9207 `iss` (issuer) does not match the authorization server the flow started against, aborting the login before any token exchange; legacy authorization servers that omit `iss` continue to work. This complements the MCP protocol 2026-07-28 work in [#8167](https://github.com/can1357/oh-my-pi/pull/8167) by [@art-wiedzmin](https://github.com/art-wiedzmin) ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
+
 ## [18.2.0] - 2026-09-15
 
 ### Breaking Changes
@@ -69,7 +73,6 @@
 - Multi-step logins (e.g. Perplexity email → code) now move the input field under the latest prompt instead of leaving it stuck beneath the first one.
 - Todo updates made through Eval's `tool.todo(...)` now persist to the session, so they survive resume/rewind/fork and no longer trigger false incomplete-todo reminders.
 - Native background security scans now accept provider-owned AWS authentication for Amazon Bedrock and Bedrock Mantle without requiring a stored OAuth account ([#12013](https://github.com/can1357/oh-my-pi/issues/12013)).
-- MCP OAuth flows now reject authorization callbacks whose RFC 9207 `iss` (issuer) does not match the authorization server the flow started against, aborting the login before any token exchange; legacy authorization servers that omit `iss` continue to work. This complements the MCP protocol 2026-07-28 work in [#8167](https://github.com/can1357/oh-my-pi/pull/8167) by [@art-wiedzmin](https://github.com/art-wiedzmin) ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
 
 ## [18.1.21] - 2026-09-14
 
