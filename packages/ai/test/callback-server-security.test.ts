@@ -281,7 +281,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => {},
+			onAuth: () => { },
 			onManualCodeInput: async () =>
 				"https://localhost/callback?code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
 			signal: abort.signal,
@@ -300,7 +300,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => {},
+			onAuth: () => { },
 			onManualCodeInput: async () =>
 				"https://localhost/callback?code=legitimate-code&iss=https%3A%2F%2Fauth.example.com%2Ftenant",
 			signal: abort.signal,
@@ -319,7 +319,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => {},
+			onAuth: () => { },
 			onManualCodeInput: async () => "code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
 			signal: abort.signal,
 		};
@@ -362,7 +362,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => {},
+			onAuth: () => { },
 			onManualCodeInput: async () => "#code=stolen-code&iss=https%3A%2F%2Fattacker.example.com",
 			signal: abort.signal,
 		};
@@ -376,11 +376,18 @@ describe("OAuthCallbackFlow callback security", () => {
 		}
 	});
 
-	it("accepts a pasted bare authorization code even when the server advertises iss support", async () => {
+	it("skips the issuer guard for a pasted bare authorization code", async () => {
+		// A bare code is not a callback URL, so the flow must not synthesize one
+		// and invoke the guard: a strict server (iss advertised) would otherwise
+		// reject every bare paste. The probe throws on any hook invocation, so a
+		// successful exchange proves the hook was skipped.
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
+		flow.onAuthorizeRedirect = () => {
+			throw new Error("issuer guard must not run for a bare pasted code");
+		};
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => {},
+			onAuth: () => { },
 			onManualCodeInput: async () => "legitimate-code",
 			signal: abort.signal,
 		};
@@ -398,7 +405,7 @@ describe("OAuthCallbackFlow callback security", () => {
 		const flow = new IssuerGuardedFlow("https://auth.example.com/tenant");
 		const abort = new AbortController();
 		flow.ctrl = {
-			onAuth: () => {},
+			onAuth: () => { },
 			onManualCodeInput: async () => "code=legitimate-code&iss=https%3A%2F%2Fauth.example.com%2Ftenant",
 			signal: abort.signal,
 		};
