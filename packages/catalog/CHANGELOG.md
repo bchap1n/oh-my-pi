@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the `stencil` auth provider (stencil.so account, OAuth code + PKCE against `auth.stencil.so`; `STENCIL_API_KEY`, `STENCIL_AUTH_URL`, `STENCIL_BASE_URL` envs) used by `omp stream`. Auth-only: it is not a model provider. `oauth-code` logins gain `base-url`/`auth-url` nodes with `{base}`/`{auth}` URL placeholders.
+
+### Fixed
+
+- Discovery validators reuse hoisted module-scope schemas instead of constructing a fresh schema per property per row.
+- Fixed Yolo-Auto advertising 1M context for Qwen Flash: `qwen3.8-flash` and the paid `yolo` route now resolve to the documented 256K deployment window with the Qwen chat-template reasoning dialect, and `qwen3.8-flash` is the provider default.
+- Model identity classification now uses a prebuilt override index and a bounded per-id memo instead of re-scanning the taxonomy on every call.
+- Compat glob patterns reuse cached wildcard segments instead of re-splitting on every match.
+
+## [18.2.4] - 2026-09-17
+
+### Added
+
+- Added `typesafe` authentication for TypeSafe System One judgments via the `TYPESAFE_API_KEY` configuration and API-key validation against the TypeSafe models endpoint.
+
+## [18.2.3] - 2026-09-17
+
+### Added
+
+- Models can carry deferred request-header resolvers, and model managers can reconstruct omitted cached headers from authoritative local configuration without persisting credentials.
+
+## [18.2.2] - 2026-09-16
+
+### Added
+
+- OpenAI-compatible model discovery now fills in reasoning-effort tiers for unrecognized models using the shared catalog’s published reasoning options, while preserving explicit discovery metadata and reviewed model rules.
+
+### Fixed
+
+- Fixed recovery of corrupted model caches so private backups are preserved and concurrent recovery cannot overwrite a cache that has already been restored.
+- Fixed pricing for Devin (SWE-2, SWE-1.7, and GLM-5.2 High) and Kimi Code models when upstream discovery omits cost information. SWE-2 now reflects its promotional pricing through December 31, 2026, then switches to list pricing on January 1, 2027.
+- Fixed pricing and chat routing for Devin Fusion models so composite models use their own headline rates and supported Fusion lanes connect directly instead of failing through an incompatible routing path.
+
 ## [18.2.1] - 2026-09-15
 
 ### Added

@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- SSE `raw` wire lines are captured only when a reader opts in; the default token path returns empty `raw` with no per-line slices.
+- The rotating file sink holds one append fd per active file instead of open/write/close per log line.
+
+### Added
+
+- Added getDotenvEnvValues helper to retrieve environment values sourced from dotenv
+- Added callback support to filterChildShellEnv for custom processing of filtered values
+- Exported paletteToRgb utility function
+- Added stringifyYamlConfig utility to strip trailing spaces from YAML block headers
+
+### Fixed
+
+- `stringifyJson` now tries the plain serializer first and only retries with bigint coercion when a bigint is actually present, avoiding the replacer slow path on every call.
+- `$which` cache keys embed the raw lookup options instead of their hashes, so distinct PATH/cwd combinations can no longer collide and return each other's binary.
+
+## [18.2.3] - 2026-09-17
+
+### Fixed
+
+- Optimized model configuration command execution by deduplicating requests and adding failure backoff
+- Prevented unnecessary credential command execution when runtime API keys are configured
+- Retained `readLines()` results no longer change when later chunks reuse the internal buffer.
+- Long sleeps honor elapsed time and re-arm after premature timer wakes without overflowing native timer delays.
+
+## [18.2.2] - 2026-09-16
+
+### Added
+
+- Added asynchronous and synchronous SQLite database opening APIs with path-attributed errors, optional corruption recovery that preserves private database and sidecar backups, and automatic retries for transient busy errors during asynchronous opens.
+
 ## [18.2.1] - 2026-09-15
 
 ### Added
