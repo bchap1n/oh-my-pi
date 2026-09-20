@@ -13,6 +13,10 @@
 - Import Anthropic streaming and provider request helpers from `@oh-my-pi/pi-ai/providers/anthropic` rather than the package root.
 - Moved `NO_AUTH_SENTINEL` from `providers/openai-shared` to `auth-retry`.
 
+### Added
+
+- Added an opt-in RFC 9207 issuer check to OAuth callback flows: `onAuthorizeRedirect(url)` can reject a redirect whose `iss` does not match the discovered issuer ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
+
 ## [18.2.6] - 2026-09-18
 
 ### Fixed
@@ -24,7 +28,6 @@
 
 ### Added
 
-- Added an opt-in RFC 9207 authorization-server-issuer hook to the OAuth callback loopback: flows can now override `onAuthorizeRedirect(url)` to reject an authorization redirect whose `iss` does not match the discovered issuer before the code is redeemed, closing a mixed-up-authorization-server attack on multi-issuer MCP hosts ([#11936](https://github.com/can1357/oh-my-pi/pull/11936) by [@bchap1n](https://github.com/bchap1n)).
 - Added support for templating and custom base and authentication URLs in OAuth flows.
 
 ### Fixed

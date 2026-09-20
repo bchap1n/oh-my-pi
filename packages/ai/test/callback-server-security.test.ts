@@ -36,10 +36,15 @@ class IssuerGuardedFlow extends OAuthCallbackFlow {
 
 	override onAuthorizeRedirect(url: URL): void {
 		// Mirrors MCPOAuthFlow: compare the RFC 9207 `iss` parameter against the
-		// authorization-server issuer (origin + path); a legacy AS omits `iss`.
+		// authorization-server issuer; a legacy AS omits `iss`.
 		const iss = url.searchParams.get("iss");
 		if (iss === null) return;
-		if (iss !== this.expectedIssuer) throw new Error("OAuth iss mismatch");
+		// Mirror the real flow's message shape so the untrusted value actually
+		// reaches the failure page. A constant message would leave the escaping
+		// assertions in the tests below unfalsifiable.
+		if (iss !== this.expectedIssuer) {
+			throw new Error(`OAuth iss mismatch (RFC 9207): expected ${this.expectedIssuer}, got ${iss}`);
+		}
 	}
 }
 
@@ -350,6 +355,10 @@ describe("OAuthCallbackFlow callback security", () => {
 			const response = await fetch(injected);
 			const page = await response.text();
 			expect(response.status).toBe(500);
+			// The injected `iss` must actually reach the page, or this test
+			// proves nothing: assert the JSON-escaped form is present and no
+			// raw `</script>` survives to close the script element early.
+			expect(page).toContain("\\u003c/script\\u003e");
 			expect(page).not.toContain("</script><script>alert");
 			await expect(login).rejects.toThrow("OAuth iss mismatch");
 		} finally {

@@ -429,13 +429,16 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 
 	/**
 	 * Reject a redirected callback whose `iss` (issuer) does not match the
-	 * authorization server this flow started against (RFC 9207). Compares
-	 * exactly against the discovered RFC 8414 issuer when metadata produced
-	 * one. Without a discovered issuer, only an `iss` that names a *different*
-	 * origin than the authorization endpoint is rejected - a guessed origin
-	 * cannot distinguish path-scoped issuers, so exact matching there would
-	 * reject legitimate callbacks. When the server advertised RFC 9207 support
-	 * a missing `iss` is itself a tamper signal.
+	 * authorization server this flow started against (RFC 9207).
+	 *
+	 * The policy, in order: a callback that omits `iss` is rejected when the
+	 * authorization server advertised RFC 9207 support, and accepted otherwise
+	 * so legacy servers keep working. A callback that carries `iss` is compared
+	 * exactly against the discovered RFC 8414 issuer. With neither a discovered
+	 * issuer nor the advertised-support flag there is no identifier to compare
+	 * against - OAuth metadata does not require the endpoint and issuer origins
+	 * to match, so guessing an origin would reject legitimate callbacks and the
+	 * guard fails open instead.
 	 */
 	override onAuthorizeRedirect(url: URL): void {
 		const iss = url.searchParams.get("iss");
