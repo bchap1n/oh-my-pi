@@ -4,6 +4,17 @@
 
 ### Added
 
+- Added `renderMermaidAscii`: a native Mermaid → ASCII/Unicode renderer (flowcharts, state, sequence, class, ER diagrams and xycharts) producing byte-identical output to the TypeScript renderer in `@oh-my-pi/pi-utils`, including color modes, themes, and direction overrides.
+- Package exports now include a `default` condition so CommonJS `require()` (e.g. bytecode bundles) can load the native bindings.
+
+### Fixed
+
+- Fixed sloppy edit grammar compatibility with Codex constrained decoding.
+
+## [18.2.1] - 2026-09-15
+
+### Added
+
 - Added `maxBytes` to `VcsGitRepo.diffText` options: rendering stops and the call rejects with an `OutputTooLarge` VcsError once the patch crosses the cap, so callers can bound the memory a large change set may consume ([#11454](https://github.com/can1357/oh-my-pi/pull/11454) by [@sjawhar](https://github.com/sjawhar)).
 - Native addon embedding now rejects stale release binaries before standalone builds can package them ([#11831](https://github.com/can1357/oh-my-pi/issues/11831)).
 - Fixed git repository discovery treating an unpopulated `.git` directory (no `HEAD`) as a checkout, which made `/wt` and isolated tasks fail with a raw "No such file or directory (os error 2)" instead of reporting that no Git repository was found. Discovery now skips such entries and keeps walking toward the root, matching `git rev-parse`.

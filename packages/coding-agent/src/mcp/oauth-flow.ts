@@ -11,7 +11,7 @@ import type { OAuthController, OAuthCredentials } from "@oh-my-pi/pi-ai/oauth/ty
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import type { FetchImpl } from "@oh-my-pi/pi-ai/types";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
-import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
+import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { getActiveProfile } from "@oh-my-pi/pi-utils/dirs";
 import type { OAuthCredential } from "../session/auth-storage";
 import { buildWellKnownUrls } from "./oauth-discovery";

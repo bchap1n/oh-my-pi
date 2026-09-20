@@ -7,10 +7,11 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { validateServerName } from "@oh-my-pi/pi-coding-agent/mcp/config-writer";
 import * as oauthDiscovery from "@oh-my-pi/pi-coding-agent/mcp/oauth-discovery";
 import type { AuthDetectionResult } from "@oh-my-pi/pi-coding-agent/mcp/oauth-discovery";
-import { MCPAddWizard } from "@oh-my-pi/pi-coding-agent/modes/components/mcp-add-wizard";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { MCPAddWizard } from "@oh-my-pi/pi-tui/overlays/mcp-add-wizard";
+import { initTheme } from "@oh-my-pi/pi-tui/theme";
 
 const ESC = "\x1b";
 const ENTER = "\r";
@@ -43,6 +44,14 @@ function detectedOAuth(): AuthDetectionResult {
 
 function createWizard(calls: OAuthForwardedOptions[], fail = false): MCPAddWizard {
 	return new MCPAddWizard(
+		{
+			validateServerName,
+			analyzeAuthError: (error, serverUrl) => oauthDiscovery.analyzeAuthError(error, serverUrl),
+			discoverOAuthEndpoints: (serverUrl, authServerUrl, resourceMetadataUrl, options) =>
+				oauthDiscovery.discoverOAuthEndpoints(serverUrl, authServerUrl, resourceMetadataUrl, options),
+			fetchResourceMetadataScopes: resourceMetadataUrl =>
+				oauthDiscovery.fetchResourceMetadataScopes(resourceMetadataUrl),
+		},
 		() => {},
 		() => {},
 		async (_authUrl, _tokenUrl, _clientId, _clientSecret, _scopes, options) => {
