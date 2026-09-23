@@ -269,6 +269,8 @@ export interface ShellRendererConfig<TArgs> {
 	resolveCwd?: (args: TArgs | undefined) => string | undefined;
 	resolveEnv?: (args: TArgs | undefined) => Record<string, unknown> | undefined;
 	showHeader?: boolean;
+	commandLanguage?: string;
+	commandPrefix?: string;
 }
 
 function getPartialJson<TArgs>(args: TArgs | undefined): string | undefined {
@@ -294,19 +296,27 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, unkno
  * reset SGR state at line boundaries, which made the previous single-string
  * `theme.fg("dim", ...)` form render only the first line as dim.
  */
-export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
+export function formatBashCommandLines(
+	args: BashRenderArgs,
+	uiTheme: Theme,
+	config: Pick<ShellRendererConfig<unknown>, "commandLanguage" | "commandPrefix"> = {},
+): string[] {
 	const command = replaceTabs(sanitizeText(args.command || "…"));
-	const prefix = bashCommandPrefix(args, uiTheme);
-	const highlightedLines = highlightCode(command, "bash");
+	const prefix = bashCommandPrefix(args, uiTheme, config);
+	const highlightedLines = highlightCode(command, config.commandLanguage ?? "bash");
 	if (highlightedLines.length === 0) return [prefix.trimEnd()];
 	return highlightedLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
 }
 
 /** The dim `$ cd <dir> && NAME="…" ` prefix ahead of a command's first line (trailing space included). */
-export function bashCommandPrefix(args: BashRenderArgs, uiTheme: Theme): string {
+export function bashCommandPrefix(
+	args: BashRenderArgs,
+	uiTheme: Theme,
+	config: Pick<ShellRendererConfig<unknown>, "commandPrefix"> = {},
+): string {
 	const displayWorkdir = formatToolWorkingDirectory(args.cwd, getProjectDir());
 	const envAssignments = formatBashEnvAssignments(getBashEnvForDisplay(args));
-	const prefixParts = ["$"];
+	const prefixParts = [config.commandPrefix ?? "$"];
 	if (displayWorkdir) prefixParts.push(cdPrefix(displayWorkdir, args.cdSeparator));
 	if (envAssignments) prefixParts.push(envAssignments);
 	return uiTheme.fg("dim", `${prefixParts.join(" ")} `);
@@ -519,18 +529,18 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const presentation = options.shellPresentation;
 					const commandLines = presentation
 						? visualCommandLines(presentation, renderArgs, undefined, uiTheme, contentWidth)
-						: (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme));
+						: (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme, config));
 					const header =
 						config.showHeader === false
 							? undefined
 							: renderStatusLine(
-									{
-										icon: options.spinnerFrame !== undefined ? "running" : "pending",
-										spinnerFrame: options.spinnerFrame,
-										title: config.resolveTitle(args, options),
-									},
-									uiTheme,
-								);
+								{
+									icon: options.spinnerFrame !== undefined ? "running" : "pending",
+									spinnerFrame: options.spinnerFrame,
+									title: config.resolveTitle(args, options),
+								},
+								uiTheme,
+							);
 					const elapsedMs = options.executionStarted ? options.elapsedMs : undefined;
 					return {
 						header,
@@ -567,17 +577,17 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 				config.showHeader === false
 					? undefined
 					: renderStatusLine(
-							success
-								? {
-										iconOverride: uiTheme.styledSymbol("tool.bash", "accent"),
-										title: config.resolveTitle(args, options),
-									}
-								: {
-										icon: isPartial ? "pending" : isTimeout ? "warning" : "error",
-										title: config.resolveTitle(args, options),
-									},
-							uiTheme,
-						);
+						success
+							? {
+								iconOverride: uiTheme.styledSymbol("tool.bash", "accent"),
+								title: config.resolveTitle(args, options),
+							}
+							: {
+								icon: isPartial ? "pending" : isTimeout ? "warning" : "error",
+								title: config.resolveTitle(args, options),
+							},
+						uiTheme,
+					);
 			// Per-instance cache for the expensive inner lines computation. Mirrors
 			// the eval-renderer pattern (`eval-render.ts:709-752`): without this,
 			// every TUI repaint (one per keystroke when a long transcript is on
@@ -726,7 +736,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 									presentation
 										? visualCommandLines(presentation, renderArgs, scriptDetails, uiTheme, contentWidth)
 										: args
-											? (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme))
+											? (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme, config))
 											: [],
 									uiTheme,
 									{ expanded },
@@ -762,22 +772,22 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						[
 							options.shell && options.shellPresentation
 								? node(
-										"shell",
-										{
-											role: SHELL_INPUT.role,
-											presentation: options.shellPresentation,
-											lang: "bash",
-											replayEpoch: options.shellReplayEpoch,
-											liveOrigin: options.executionStarted,
-											stream: options.argsComplete !== true && options.cancelled !== true,
-											preview: { lines: RUN_INPUT_PREVIEW_LINES },
-										},
-										undefined,
-										"input",
-									)
+									"shell",
+									{
+										role: SHELL_INPUT.role,
+										presentation: options.shellPresentation,
+										lang: "bash",
+										replayEpoch: options.shellReplayEpoch,
+										liveOrigin: options.executionStarted,
+										stream: options.argsComplete !== true && options.cancelled !== true,
+										preview: { lines: RUN_INPUT_PREVIEW_LINES },
+									},
+									undefined,
+									"input",
+								)
 								: runInput(command, SHELL_INPUT),
 							started &&
-								runFoot({ state: options.cancelled ? "cancelled" : "running", elapsedMs: options.elapsedMs }),
+							runFoot({ state: options.cancelled ? "cancelled" : "running", elapsedMs: options.elapsedMs }),
 						],
 						{ key: "run" },
 					),
@@ -839,19 +849,19 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 				[
 					presentation
 						? node(
-								"shell",
-								{
-									role: SHELL_INPUT.role,
-									presentation,
-									replayEpoch: options.shellReplayEpoch,
-									liveOrigin: options.executionStarted,
-									...(displayWorkdir ? { cwd: displayWorkdir } : {}),
-									lang: "bash",
-									preview: { lines: RUN_INPUT_PREVIEW_LINES },
-								},
-								undefined,
-								"input",
-							)
+							"shell",
+							{
+								role: SHELL_INPUT.role,
+								presentation,
+								replayEpoch: options.shellReplayEpoch,
+								liveOrigin: options.executionStarted,
+								...(displayWorkdir ? { cwd: displayWorkdir } : {}),
+								lang: "bash",
+								preview: { lines: RUN_INPUT_PREVIEW_LINES },
+							},
+							undefined,
+							"input",
+						)
 						: runInput(command, SHELL_INPUT),
 					shownOutput.trim().length > 0 && runOutput(shownOutput, { role: "omp.tool.bash.output", previewLines }),
 					runFoot({
