@@ -49,11 +49,13 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 			},
 			// Precompiled bytecode skips parsing the ~20 MB bundle at boot:
 			// `omp --version` 256 ms -> 30 ms on M4 Max (+52 MB binary).
+			// Keep import.meta.resolve in bundled dependencies valid.
 			// Bytecode rejects top-level await in the bundle graph.
 			// Windows: Bun 1.4.0 emits a binary that dies before any CLI output
 			// with `SyntaxError: import.meta is only valid inside modules`. This
 			// entrypoint was compiled both ways on the same Bun; only `false`
 			// boots and passes `--smoke-test`. Re-test on the next Bun bump.
+			format: "esm",
 			bytecode: false,
 			minify: {
 				identifiers: options.minifyIdentifiers ?? false,
