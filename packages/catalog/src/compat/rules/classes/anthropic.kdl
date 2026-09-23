@@ -31,6 +31,15 @@ class "anthropic" {
 			supports-server-compaction #true
 		}
 	}
+	// Opus 5.5 rejects forced tool use outright ("tool_choice: type "tool" and
+	// "any" are not supported for this model"), like Fable/Mythos 5. The
+	// `<45` guard keeps vendor-mangled "opus-45" ids (revision 45 = 4.5)
+	// out of the selector; `>=4.7 <45.1` rules use the same exclusion.
+	family "opus" {
+		revision ">=5.5 <45" {
+			supports-forced-tool-choice #false
+		}
+	}
 	on "anthropic" "cloudflare-ai-gateway" "google-vertex" {
 		family "fable" {
 			revision ">=5" {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `claude-opus-5-5` rejecting forced tool choice with a 400; forced choices now downgrade to `auto` like Fable/Mythos ([#12939](https://github.com/can1357/oh-my-pi/issues/12939)).
+
 ## [18.2.11] - 2026-09-23
 
 ### Added
