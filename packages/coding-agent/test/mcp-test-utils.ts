@@ -30,6 +30,8 @@ export function createMockConnection(
 		name: "test-server",
 		config: { type: "stdio" as const, command: "echo" },
 		transport,
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "test", version: "1.0" },
 		capabilities,
 	};

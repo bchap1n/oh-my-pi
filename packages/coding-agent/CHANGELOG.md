@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added dual-era MCP client support: servers speaking the 2026-07-28 protocol (stateless requests with `_meta`/`MCP-Protocol-Version` headers, `server/discover`, MRTR input responses, modern subscriptions) are detected automatically, with fallback to the legacy 2025 handshake.
+
+### Fixed
+
+- Added RFC 9207 issuer validation to the MCP OAuth callback: redirected `iss` values that do not match the authorization server now abort the login before token exchange.
+
 ## [18.3.3] - 2026-09-27
 
 ### Added

@@ -587,7 +587,7 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 });
 
 describe("MCP Streamable HTTP protocol version header", () => {
-	it("omits MCP-Protocol-Version until the version is negotiated", async () => {
+	it("omits MCP-Protocol-Version until the version is negotiated (legacy era)", async () => {
 		const seen: { version: string | null; present: boolean } = { version: null, present: true };
 		server = Bun.serve({
 			port: 0,
@@ -598,12 +598,42 @@ describe("MCP Streamable HTTP protocol version header", () => {
 			},
 		});
 		const transport = await connectedTransport();
+		// Legacy era: the `initialize` request itself must not carry the header.
+		transport.setEra("legacy");
 
 		// No setProtocolVersion yet: this stands in for the initialize request,
 		// which must not carry the header before negotiation completes.
 		await withPendingGuard(transport.request("initialize"), "request");
 		expect(seen.present).toBe(false);
 		expect(seen.version).toBeNull();
+	});
+
+	it("sends MCP-Protocol-Version on the first request in modern era", async () => {
+		const seen: { version: string | null; present: boolean; method: string | null; name: string | null } = {
+			version: null,
+			present: false,
+			method: null,
+			name: null,
+		};
+		server = Bun.serve({
+			port: 0,
+			fetch(req) {
+				seen.present = req.headers.has("MCP-Protocol-Version");
+				seen.version = req.headers.get("MCP-Protocol-Version");
+				seen.method = req.headers.get("Mcp-Method");
+				seen.name = req.headers.get("Mcp-Name");
+				return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+			},
+		});
+		const transport = await connectedTransport();
+		transport.setEra("modern");
+
+		// Modern era: every POST including the first carries the version header.
+		await withPendingGuard(transport.request("tools/list", undefined, { name: "search" }), "request");
+		expect(seen.present).toBe(true);
+		expect(seen.version).toBe("2026-07-28");
+		expect(seen.method).toBe("tools/list");
+		expect(seen.name).toBe("search");
 	});
 
 	it("echoes the negotiated version on requests after setProtocolVersion", async () => {

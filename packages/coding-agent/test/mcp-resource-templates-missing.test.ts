@@ -38,6 +38,8 @@ function makeResourceConnection(transport: MCPTransport): MCPServerConnection {
 		name: "docs",
 		config: { type: "stdio", command: "echo" },
 		transport,
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "docs", version: "1.0" },
 		capabilities: { resources: {} },
 	};

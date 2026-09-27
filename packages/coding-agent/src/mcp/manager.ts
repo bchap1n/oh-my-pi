@@ -286,6 +286,12 @@ export class MCPManager {
 	#notificationsEpoch = 0;
 	#subscribedResources = new Map<string, Set<string>>();
 	#pendingResourceRefresh = new Map<string, { connection: MCPServerConnection; promise: Promise<void> }>();
+	/**
+	 * Abort controllers for open modern-era `subscriptions/listen` streams,
+	 * keyed by server name. Aborted on disconnect so the pending POST/SSE read
+	 * stops.
+	 */
+	#listenControllers = new Map<string, AbortController>();
 	#pendingReconnections = new Map<string, Promise<MCPServerConnection | null>>();
 	/** Preserved configs for reconnection after connection loss. */
 	#serverConfigs = new Map<string, MCPServerConfig>();
@@ -760,6 +766,10 @@ export class MCPManager {
 					this.#pendingConnections.delete(name);
 					this.#connections.set(name, connection);
 					this.#serverConfigs.set(name, config);
+					// Modern-era servers use a `subscriptions/listen` stream.
+					if (connection.era === "modern") {
+						this.#openModernListen(name, connection);
+					}
 
 					// Wire auth refresh for HTTP-like transports so 401s trigger token refresh.
 					// Gate on a resolvable managed credential, not on the auth block:
@@ -961,6 +971,56 @@ export class MCPManager {
 		return refresh.catch(error => {
 			logger.debug("Failed MCP notification refresh", { path: `mcp:${serverName}`, kind, error });
 		});
+	}
+
+	/**
+	 * Open a modern-era (`2026-07-28`) `subscriptions/listen` stream for a
+	 * server that advertised list-change capabilities. HTTP: the POST stays
+	 * open as SSE, reusing the transport's SSE reader to deliver notifications
+	 * to `onNotification`; a NOT long-lived GET stream. stdio: the RPC returns
+	 * immediately and notifications arrive on the existing stdout loop. Holds
+	 * an abort controller keyed by server name, cancelled on disconnect. A
+	 * `-32601` (no listen support) is ignored — the connection still works.
+	 */
+	#openModernListen(name: string, connection: MCPServerConnection): void {
+		const advertisedTools = !!connection.capabilities.tools;
+		const advertisedResources = !!connection.capabilities.resources;
+		const advertisedPrompts = !!connection.capabilities.prompts;
+		if (!advertisedTools && !advertisedResources && !advertisedPrompts) return;
+
+		this.#listenControllers.get(name)?.abort();
+		const controller = new AbortController();
+		this.#listenControllers.set(name, controller);
+
+		const subscribedUris = this.#subscribedResources.get(name) ?? new Set<string>();
+		const params: Record<string, unknown> = {
+			notifications: {
+				toolsListChanged: advertisedTools,
+				promptsListChanged: advertisedPrompts,
+				resourcesListChanged: advertisedResources,
+				resourceSubscriptions: [...subscribedUris],
+			},
+		};
+
+		void connection.transport
+			.request("subscriptions/listen", params, { signal: controller.signal })
+			.then(() => {
+				// For HTTP, the ack resolves the request but the SSE stream keeps
+				// delivering notifications until we abort it on disconnect.
+			})
+			.catch((error: unknown) => {
+				if (this.#listenControllers.get(name) === controller) {
+					this.#listenControllers.delete(name);
+				}
+				const isMethodNotFound =
+					error instanceof Error && (error.message.includes("-32601") || /method not found/i.test(error.message));
+				if (isMethodNotFound) {
+					logger.debug("MCP server has no subscriptions/listen; ignoring", { path: `mcp:${name}` });
+					return;
+				}
+				if (error instanceof Error && error.name === "AbortError") return;
+				logger.debug("MCP subscriptions/listen stream ended", { path: `mcp:${name}`, error });
+			});
 	}
 	async #handleServerNotification(serverName: string, method: string, params: unknown): Promise<void> {
 		logger.debug("MCP notification received", { path: `mcp:${serverName}`, method });
@@ -1251,6 +1311,8 @@ export class MCPManager {
 		this.#pendingResourceRefresh.delete(name);
 		this.#reconnectHistory.delete(name);
 		this.#forgetLostServer(name);
+		this.#listenControllers.get(name)?.abort();
+		this.#listenControllers.delete(name);
 
 		const connection = this.#connections.get(name);
 
@@ -1286,6 +1348,8 @@ export class MCPManager {
 		const promises = Array.from(this.#connections, ([name, connection]) => this.#discardConnection(name, connection));
 		await Promise.allSettled(promises);
 
+		for (const controller of this.#listenControllers.values()) controller.abort();
+		this.#listenControllers.clear();
 		this.#pendingConnections.clear();
 		this.#pendingToolLoads.clear();
 		this.#startupUpdates.clear();
@@ -1563,6 +1627,10 @@ export class MCPManager {
 
 		this.#connections.set(name, connection);
 
+		if (connection.era === "modern") {
+			this.#openModernListen(name, connection);
+		}
+
 		// Wire auth refresh for HTTP-like transports, and reconnect for any transport.
 		// Same gate as connectServers: any resolvable managed credential.
 		if (isAuthRefreshableMCPTransport(connection.transport) && lookupMcpOAuthCredential(this.#authStorage, config)) {
@@ -1681,6 +1749,15 @@ export class MCPManager {
 				const newUris = new Set(resources.map(r => r.uri));
 				const oldUris = this.#subscribedResources.get(name);
 				const notificationEpoch = this.#notificationsEpoch;
+
+				if (connection.era === "modern") {
+					// Modern-era resource subscriptions live in the `subscriptions/listen`
+					// filter's `resourceSubscriptions`, not per-URI `resources/subscribe`
+					// RPCs. Record the set and re-open listen with the updated list.
+					this.#subscribedResources.set(name, newUris);
+					this.#openModernListen(name, connection);
+					return;
+				}
 
 				// Unsubscribe URIs that were removed
 				if (oldUris) {

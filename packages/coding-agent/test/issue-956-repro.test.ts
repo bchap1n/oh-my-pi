@@ -91,6 +91,8 @@ describe("interactive /mcp test", () => {
 			name: "github",
 			config: { type: "stdio" as const, command: "github-mcp-server", args: ["serve"] },
 			transport,
+			era: "legacy" as const,
+			protocolVersion: "2025-11-25",
 			serverInfo: { name: "GitHub MCP", version: "1.0.0" },
 			capabilities: {},
 		};
@@ -221,6 +223,8 @@ describe("interactive /mcp test", () => {
 			transport,
 			serverInfo: { name: "GitHub MCP", version: "1.0.0" },
 			capabilities: {},
+			era: "legacy" as const,
+			protocolVersion: "2025-11-25",
 		};
 		vi.spyOn(mcpClient, "connectToServer").mockResolvedValue(connection);
 		vi.spyOn(mcpClient, "listTools").mockResolvedValue([{ name: "search_issues" }] as never);
@@ -341,6 +345,8 @@ describe("interactive /mcp test", () => {
 			transport: { connected: true, request: vi.fn(), notify: vi.fn(), close: vi.fn(async () => {}) },
 			serverInfo: { name: "GitHub MCP", version: "1.0.0" },
 			capabilities: {},
+			era: "legacy" as const,
+			protocolVersion: "2025-11-25",
 		};
 		vi.spyOn(mcpClient, "connectToServer").mockResolvedValue(connection);
 		vi.spyOn(mcpClient, "listTools").mockResolvedValue([{ name: "search_issues" }] as never);

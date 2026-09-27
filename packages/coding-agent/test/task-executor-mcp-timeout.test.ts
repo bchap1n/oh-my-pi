@@ -33,6 +33,8 @@ function createFakeConnection() {
 		name: "test-server",
 		config: { command: "test", args: [] },
 		transport,
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "test", version: "1" },
 		capabilities: {},
 	};

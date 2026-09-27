@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added an `OAuthCallbackFlow` issuer-redirect hook so flows can reject a callback whose RFC 9207 `iss` does not match the authorization server before token exchange.
+
 ## [18.3.2] - 2026-09-25
 
 ### Fixed

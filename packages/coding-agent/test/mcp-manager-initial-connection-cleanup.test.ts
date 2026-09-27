@@ -46,6 +46,8 @@ function fakeConnection(name: string): { connection: MCPServerConnection; transp
 			transport,
 			serverInfo: { name: "fake", version: "1.0.0" },
 			capabilities: { tools: {} },
+			era: "legacy",
+			protocolVersion: "2025-03-26",
 		},
 		transport,
 	};
