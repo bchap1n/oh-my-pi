@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [18.3.3] - 2026-09-27
+
+### Added
+
+- Added a `TextPredictor` N-API binding for managing the high-performance ghost-text completion engine.
+
+### Changed
+
+- Updated desktop input-control capabilities to use a unified `takeover` setting, including `takeover: true` for forced foreground pointer interaction.
+
 ## [18.3.1] - 2026-09-25
 
 ### Added
