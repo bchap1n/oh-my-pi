@@ -2074,59 +2074,6 @@ function applyOpenAIChatCompletionsPromptCachePolicy(
 		markLatestStableChatCompletionsCacheBreakpoint(params.messages);
 }
 
-/**
- * Tool names the OpenCode CLI v2.0.32 advertises (captured from its wire
- * request). The gateways' free tier only admits requests whose `tools` list
- * contains at least one of these, so OMP turns with only custom tool names
- * are rejected with a 403 FreeTierError.
- */
-const OPENCODE_RECOGNIZED_TOOL_NAMES: Record<string, true> = {
-	edit: true,
-	execute: true,
-	glob: true,
-	grep: true,
-	question: true,
-	read: true,
-	shell: true,
-	skill: true,
-	subagent: true,
-	webfetch: true,
-	websearch: true,
-	write: true,
-};
-
-/**
- * The CLI's `read` tool, wire-identical to what OpenCode CLI v2.0.32 sends.
- * Injected into OpenCode free-tier requests that offer no recognized tool,
- * so the gateway's free-tier check admits the payload.
- */
-const OPENCODE_FREE_TIER_GATE_TOOL: ChatCompletionTool = {
-	type: "function",
-	function: {
-		name: "read",
-		description: "Read the contents of a file or directory. Supports text files, images, and PDFs.",
-		parameters: {
-			type: "object",
-			properties: {
-				path: { type: "string", description: "File or directory to read" },
-				offset: {
-					type: "integer",
-					minimum: 0,
-					description: "The line or directory entry to start reading from (1-based)",
-				},
-				limit: {
-					type: "integer",
-					minimum: 0,
-					description: "The maximum number of lines or directory entries to read (defaults to and capped at 2000)",
-				},
-			},
-			required: ["path"],
-			additionalProperties: false,
-		},
-		strict: false,
-	},
-};
-
 function buildParams(
 	model: Model<"openai-completions">,
 	context: Context,
@@ -2206,27 +2153,6 @@ function buildParams(
 		// do via AgentSession.runEphemeralTurn) — honour that intent and emit nothing,
 		// so LiteLLM → Bedrock never sees an empty `toolConfig` block.
 		params.tools = [];
-	}
-	// The OpenCode gateways' free tier only admits requests that read as a
-	// CLI coding-agent turn: the CLI user agent (see inference-headers),
-	// `stream: true` (always set above), and at least one recognized OpenCode
-	// tool name in `tools`. Inject the CLI's `read` tool when the turn offers
-	// none, and pin the choice to "none" when the caller offers no real tools
-	// and no explicit tool choice, so the injected entry is never called. A
-	// turn that does offer custom tools keeps its own choice: pinning "none"
-	// there would stop the model from calling them. This builder is the only
-	// injection site, so the free-tier lanes routed through the Responses,
-	// anthropic-messages, and google APIs still 403 by design.
-	if (
-		model.compat.opencodeFreeTier === true &&
-		!params.tools?.some(
-			tool => tool.type === "function" && OPENCODE_RECOGNIZED_TOOL_NAMES[tool.function.name] === true,
-		)
-	) {
-		params.tools = [...(params.tools ?? []), OPENCODE_FREE_TIER_GATE_TOOL];
-		if (!context.tools?.length && !options?.toolChoice && initialCompat.supportsToolChoice) {
-			params.tool_choice = "none";
-		}
 	}
 
 	if (options?.toolChoice && initialCompat.supportsToolChoice) {

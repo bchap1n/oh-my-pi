@@ -37,15 +37,6 @@ provider "opencode-go" {
 		}
 	}
 
-	// The gateway admits free-tier models only from requests that read as the
-	// OpenCode CLI; every model of this provider wears that identity.
-	opencode-cli-identity #true
-	// Free-tier lanes are additionally gated on a recognized CLI tool in
-	// `tools`; pi-ai injects the CLI's read tool when the turn offers none.
-	models "*-free" "*-contributor" {
-		opencode-free-tier #true
-	}
-
 	// The Flash lanes accept images despite their IDs lacking a vision suffix;
 	// verified against the gateway (unguessable pixel-rendered text read back
 	// verbatim). Mirrors the OpenRouter carve-out for deepseek-v4.1-flash.
