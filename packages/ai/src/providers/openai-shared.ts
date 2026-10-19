@@ -167,10 +167,7 @@ export interface OpenAIStrictToolsState {
 export interface OpenAIRequestSetupModel extends OpenAIModelIdentity, CatalogPolicyInputs {
 	headers?: Record<string, string>;
 	premiumMultiplier?: number;
-	compat?: Pick<
-		ResolvedOpenAISharedCompat,
-		"promptCacheSessionHeader" | "sessionHeader" | "opencodeCliIdentity" | "opencodeFreeTier"
-	>;
+	compat?: Pick<ResolvedOpenAISharedCompat, "promptCacheSessionHeader" | "sessionHeader">;
 }
 
 /** Cache identity controls shared by OpenAI-family transports. */
@@ -360,7 +357,6 @@ export function resolveOpenAIRequestSetup(
 		providerType: model.providerType,
 		protocol: "openai",
 		sessionId,
-		compat: model.compat,
 		cacheAffinity: resolveOpenCodeGoCacheAffinity(model, options.promptCacheAffinityKey),
 	});
 	if (options.promptCacheSessionId && model.compat?.promptCacheSessionHeader) {

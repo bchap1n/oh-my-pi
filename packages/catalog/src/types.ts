@@ -472,10 +472,6 @@ export interface OpenAICompat {
 	promptCacheSessionHeader?: "x-grok-conv-id" | "x-session-id";
 	/** Request header carrying the conversation session id, independent of prompt caching. Default: unset. */
 	sessionHeader?: "x-litellm-session-id";
-	/** Whether every request to this provider wears the OpenCode CLI identity. */
-	opencodeCliIdentity?: boolean;
-	/** Whether this model is an OpenCode gateway free-tier lane that requires the CLI tool gate. */
-	opencodeFreeTier?: boolean;
 	/** Whether chat-completions payloads should include provider-specific prompt-cache markers. */
 	cacheControlFormat?: "anthropic" | undefined;
 	/**
@@ -611,10 +607,6 @@ export interface OpenAICompat {
  * that proxy gateways (Vertex AI, AWS Bedrock-style fronts, etc.) reject.
  */
 export interface AnthropicCompat {
-	/** Whether every request to this provider wears the OpenCode CLI identity. */
-	opencodeCliIdentity?: boolean;
-	/** Whether this model is an OpenCode gateway free-tier lane that requires the CLI tool gate. */
-	opencodeFreeTier?: boolean;
 	/** Whether thinking requests may include `context_management` and its beta header. Default: true. */
 	supportsContextManagement?: boolean;
 	/**
@@ -1007,10 +999,6 @@ export interface ResolvedOpenAISharedCompat {
 	usesOpenAIToolCallIdLimit: boolean;
 	promptCacheSessionHeader?: OpenAICompat["promptCacheSessionHeader"];
 	sessionHeader?: OpenAICompat["sessionHeader"];
-	/** See {@link OpenAICompat.opencodeCliIdentity}. */
-	opencodeCliIdentity?: boolean;
-	/** See {@link OpenAICompat.opencodeFreeTier}. */
-	opencodeFreeTier?: boolean;
 	/**
 	 * Whether this model accepts explicit OpenAI prompt-cache breakpoints.
 	 * Built catalog models always materialize this false-by-default value;
@@ -1091,8 +1079,6 @@ export type ResolvedOpenAICompat = ResolvedOpenAISharedCompat &
 			| "usesOpenAIToolCallIdLimit"
 			| "promptCacheSessionHeader"
 			| "sessionHeader"
-			| "opencodeCliIdentity"
-			| "opencodeFreeTier"
 			| "supportsPromptCacheBreakpoints"
 			| "promptCacheBreakpointTtl"
 			| "openRouterRouting"
@@ -1234,14 +1220,8 @@ export type ResolvedAnthropicCompat = Required<
 		| "fastMode"
 		| "maxImageDimension"
 		| "maxImagePayloadBytes"
-		| "opencodeCliIdentity"
-		| "opencodeFreeTier"
 	>
 > & {
-	/** See {@link AnthropicCompat.opencodeCliIdentity}. */
-	opencodeCliIdentity?: boolean;
-	/** See {@link AnthropicCompat.opencodeFreeTier}. */
-	opencodeFreeTier?: boolean;
 	/** Effort-beta override; undefined keeps the transport's legacy heuristic. */
 	effortBeta?: AnthropicCompat["effortBeta"];
 	/** Extended-cache-ttl beta opt-out; undefined sends it where a 1h breakpoint needs it. */
@@ -1328,10 +1308,6 @@ export type ResolvedDevinCompat = Required<Omit<DevinCompat, "supportsSamplingPa
  * compat cascade; sparse overrides follow the same shape.
  */
 export interface GoogleCompat {
-	/** Whether every request to this provider wears the OpenCode CLI identity. */
-	opencodeCliIdentity?: boolean;
-	/** Whether this model is an OpenCode gateway free-tier lane that requires the CLI tool gate. */
-	opencodeFreeTier?: boolean;
 	/** Whether functionCall/functionResponse parts carry the `id` field. */
 	supportsFunctionPartId?: boolean;
 	/** Add the bypass sentinel to every unsigned Gemini function call. */
@@ -1390,12 +1366,8 @@ export type ResolvedGoogleCompat = Required<
 		| "base64SkipThoughtSignature"
 		| "maxImageDimension"
 		| "maxImagePayloadBytes"
-		| "opencodeCliIdentity"
-		| "opencodeFreeTier"
 	>
 > & {
-	opencodeCliIdentity?: boolean;
-	opencodeFreeTier?: boolean;
 	streamFirstEventTimeoutMs?: number;
 	streamIdleTimeoutMs?: number;
 	antigravityUsageLabel?: string;

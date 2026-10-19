@@ -4096,7 +4096,6 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			providerType: model.providerType,
 			protocol: "anthropic",
 			sessionId,
-			compat: model.compat,
 		});
 
 		return {
@@ -4170,7 +4169,6 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		providerType: model.providerType,
 		protocol: "anthropic",
 		sessionId,
-		compat: model.compat,
 	});
 
 	if (model.provider === "cloudflare-ai-gateway") {

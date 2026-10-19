@@ -9,15 +9,6 @@ provider "opencode-zen" {
 		supports-forced-tool-choice #false
 	}
 
-	// The gateway admits free-tier models only from requests that read as the
-	// OpenCode CLI; every model of this provider wears that identity.
-	opencode-cli-identity #true
-	// Free-tier lanes are additionally gated on a recognized CLI tool in
-	// `tools`; pi-ai injects the CLI's read tool when the turn offers none.
-	models "*-free" "*-contributor" {
-		opencode-free-tier #true
-	}
-
 	// Replaces the OpenCode reasoning-model whenThinking fallback object.
 	// Applies to every completions-routed reasoning model, discovered ids
 	// included; the engine drops whenThinking for non-reasoning specs.
