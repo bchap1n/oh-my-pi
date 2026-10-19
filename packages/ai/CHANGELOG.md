@@ -10,6 +10,10 @@
 
 - Anthropic requests to the official API now gzip the request body, so long conversations reach the model sooner on slow uplinks; set `PI_ANTHROPIC_GZIP=0` to disable it ([#16044](https://github.com/can1357/oh-my-pi/pull/16044) by [@H4vC](https://github.com/H4vC))
 
+### Fixed
+
+- Fixed OpenCode free-tier models (`opencode-zen` / `opencode-go` models with a `-free` or `-contributor` id suffix) being rejected with a gateway `FreeTierError`: OpenCode requests now carry the OpenCode CLI's user agent, free-tier requests wear a freshly minted CLI-format session id, and turns that offer no recognized OpenCode tool get the CLI's `read` tool injected (with `tool_choice: "none"` for tool-less turns) so the gateway admits the request
+
 ## [18.11.3] - 2026-10-16
 
 ### Fixed

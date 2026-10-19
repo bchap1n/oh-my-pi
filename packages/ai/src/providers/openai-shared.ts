@@ -150,7 +150,10 @@ export interface OpenAIStrictToolsState {
 export interface OpenAIRequestSetupModel extends OpenAIModelIdentity {
 	headers?: Record<string, string>;
 	premiumMultiplier?: number;
-	compat?: Pick<ResolvedOpenAISharedCompat, "promptCacheSessionHeader" | "sessionHeader">;
+	compat?: Pick<
+		ResolvedOpenAISharedCompat,
+		"promptCacheSessionHeader" | "sessionHeader" | "opencodeCliIdentity" | "opencodeFreeTier"
+	>;
 }
 
 /** Cache identity controls shared by OpenAI-family transports. */
@@ -326,6 +329,7 @@ export function resolveOpenAIRequestSetup(
 		provider: model.provider,
 		protocol: "openai",
 		sessionId,
+		compat: model.compat,
 	});
 	if (options.promptCacheSessionId && model.compat?.promptCacheSessionHeader) {
 		setHeaderIfAbsent(headers, model.compat.promptCacheSessionHeader, options.promptCacheSessionId);

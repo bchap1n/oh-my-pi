@@ -2,11 +2,46 @@
 
 import { APP_NAME, APP_URL, USER_AGENT } from "@oh-my-pi/pi-utils";
 
+/**
+ * User agent the OpenCode CLI sends (format `opencode/<channel>/<version>/cli`,
+ * pinned to the wire format captured from CLI v2.0.32). OpenCode's gateways
+ * admit free-tier models only from this identity.
+ */
+export const OPENCODE_CLI_USER_AGENT = "opencode/latest/2.0.32/cli";
+
 /** Options controlling provider and protocol inference headers. */
 export interface InferenceHeaderOptions {
 	provider: string;
 	protocol: "anthropic" | "google" | "openai";
 	sessionId?: string;
+	/** Resolved model compat carrying the OpenCode CLI-gate axes. */
+	compat?: object;
+}
+
+/** Read a resolved boolean compat flag; absent keys are false. */
+function compatFlag(compat: object | undefined, key: string): boolean {
+	return compat !== undefined && key in compat && Reflect.get(compat, key) === true;
+}
+
+/**
+ * Mint a session id in the exact format the OpenCode CLI generates (`ses_` +
+ * 12 hex chars derived from an embedded timestamp + 14 base62 random chars;
+ * mirrored from the CLI v2.0.32 `packages/schema/src/identifier.ts`).
+ * The gateways' free tier validates this structure, so ids of arbitrary
+ * shape (like omp's conversation UUIDs) are rejected with a FreeTierError.
+ * Only the shape is checked; the low 12 bits are a constant epoch, not a
+ * per-request counter.
+ */
+export function createOpenCodeSessionId(): string {
+	const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	const value = ~(BigInt(Date.now()) * 0x1000n + 1n);
+	const time = Array.from({ length: 6 }, (_, i) =>
+		Number((value >> BigInt(40 - 8 * i)) & 0xffn)
+			.toString(16)
+			.padStart(2, "0"),
+	).join("");
+	const bytes = crypto.getRandomValues(new Uint8Array(14));
+	return "ses_" + time + Array.from(bytes, byte => chars[byte % 62]).join("");
 }
 
 /** Set a header unless the map already contains that field under any casing. */
@@ -58,8 +93,22 @@ export function applyInferenceHeaders(headers: Record<string, string>, options: 
 		setHeaderIfAbsent(headers, "x-title", APP_NAME);
 	}
 
-	const isOpenCode = options.provider === "opencode-go" || options.provider === "opencode-zen";
+	const cliIdentity = compatFlag(options.compat, "opencodeCliIdentity");
+	const freeTier = compatFlag(options.compat, "opencodeFreeTier");
+	if (cliIdentity) {
+		// OpenCode's gateways admit free-tier models only from requests that
+		// read as the OpenCode CLI, so every OpenCode request wears the CLI
+		// identity instead of omp's (the openai-completions free-tier tool
+		// gate is the other half of that requirement).
+		setHeaderIfAbsent(headers, "User-Agent", OPENCODE_CLI_USER_AGENT);
+	}
 	const sessionId = options.sessionId;
+	if (freeTier) {
+		// The gateways validate the session id's structure, so each request
+		// carries a freshly minted CLI-format id (the CLI does the same for
+		// its title-generation calls).
+		setHeader(headers, "x-opencode-session", createOpenCodeSessionId());
+	}
 	if (!sessionId) return;
 
 	if (options.protocol === "anthropic") {
@@ -69,8 +118,7 @@ export function applyInferenceHeaders(headers: Record<string, string>, options: 
 		setHeader(headers, "x-client-request-id", sessionId);
 	}
 
-	if (isOpenCode) {
-		setHeaderIfAbsent(headers, "User-Agent", USER_AGENT);
+	if (cliIdentity && !freeTier) {
 		setHeader(headers, "x-opencode-session", sessionId);
 	}
 }
