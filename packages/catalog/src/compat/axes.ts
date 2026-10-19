@@ -51,8 +51,6 @@ export interface AxisDef {
 }
 
 const OAI = ["openai", "openai-responses"] as const;
-/** Provider records that carry the OpenCode CLI-gate axes. */
-const OPENCODE = ["openai", "openai-responses", "anthropic", "google"] as const;
 const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 /** Effort tiers accepted by taxonomy collapse/override vocabulary (`Effort` ∪ `"off"`). */
@@ -145,8 +143,6 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 	"mistral-reasoning-content-parts": wire("mistralReasoningContentParts", ["openai"]),
 	"native-kimi-k3-reasoning": wire("nativeKimiK3Reasoning", ["openai"]),
 	"omit-reasoning-effort": wire("omitReasoningEffort", OAI),
-	"opencode-cli-identity": wire("opencodeCliIdentity", OPENCODE),
-	"opencode-free-tier": wire("opencodeFreeTier", OPENCODE),
 	"prompt-cache-breakpoint-ttl": wire("promptCacheBreakpointTtl", OAI, "scalar", ["30m"]),
 	"prompt-cache-session-header": wire("promptCacheSessionHeader", OAI, "scalar", ["x-grok-conv-id"]),
 	"qwen-preserve-thinking": wire("qwenPreserveThinking", ["openai"]),

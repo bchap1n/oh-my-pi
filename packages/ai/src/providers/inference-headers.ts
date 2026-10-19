@@ -4,13 +4,6 @@ import { resolveCatalogPolicy } from "@oh-my-pi/pi-catalog/compat/catalog-policy
 import type { CatalogPolicyInputs } from "@oh-my-pi/pi-catalog/types";
 import { APP_NAME, APP_URL, USER_AGENT } from "@oh-my-pi/pi-utils";
 
-/**
- * User agent the OpenCode CLI sends (format `opencode/<channel>/<version>/cli`,
- * pinned to the wire format captured from CLI v2.0.32). OpenCode's gateways
- * admit free-tier models only from this identity.
- */
-export const OPENCODE_CLI_USER_AGENT = "opencode/latest/2.0.32/cli";
-
 /** Options controlling provider and protocol inference headers. */
 export interface InferenceHeaderOptions {
 	/**
@@ -29,40 +22,12 @@ export interface InferenceHeaderOptions {
 	providerType?: string;
 	protocol: "anthropic" | "google" | "openai";
 	sessionId?: string;
-	/** Resolved model compat carrying the OpenCode CLI-gate axes. */
-	compat?: object;
 	/**
 	 * Shared prompt-cache affinity key (see {@link resolveOpenCodeGoCacheAffinity}).
 	 * Carried only by `x-opencode-session` on the `opencode-go` backend;
 	 * protocol-native session headers and every other backend keep `sessionId`.
 	 */
 	cacheAffinity?: string;
-}
-
-/** Read a resolved boolean compat flag; absent keys are false. */
-function compatFlag(compat: object | undefined, key: string): boolean {
-	return compat !== undefined && key in compat && Reflect.get(compat, key) === true;
-}
-
-/**
- * Mint a session id in the exact format the OpenCode CLI generates (`ses_` +
- * 12 hex chars derived from an embedded timestamp + 14 base62 random chars;
- * mirrored from the CLI v2.0.32 `packages/schema/src/identifier.ts`).
- * The gateways' free tier validates this structure, so ids of arbitrary
- * shape (like omp's conversation UUIDs) are rejected with a FreeTierError.
- * Only the shape is checked; the low 12 bits are a constant epoch, not a
- * per-request counter.
- */
-export function createOpenCodeSessionId(): string {
-	const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-	const value = ~(BigInt(Date.now()) * 0x1000n + 1n);
-	const time = Array.from({ length: 6 }, (_, i) =>
-		Number((value >> BigInt(40 - 8 * i)) & 0xffn)
-			.toString(16)
-			.padStart(2, "0"),
-	).join("");
-	const bytes = crypto.getRandomValues(new Uint8Array(14));
-	return "ses_" + time + Array.from(bytes, byte => chars[byte % 62]).join("");
 }
 
 /**
@@ -139,23 +104,8 @@ export function applyInferenceHeaders(headers: Record<string, string>, options: 
 		setHeaderIfAbsent(headers, "x-title", APP_NAME);
 	}
 
-	const cliIdentity = compatFlag(options.compat, "opencodeCliIdentity");
-	const freeTier = compatFlag(options.compat, "opencodeFreeTier");
 	const isOpenCode = backend === "opencode-go" || backend === "opencode-zen";
-	if (cliIdentity) {
-		// OpenCode's gateways admit free-tier models only from requests that
-		// read as the OpenCode CLI, so every OpenCode request wears the CLI
-		// identity instead of omp's (the openai-completions free-tier tool
-		// gate is the other half of that requirement).
-		setHeaderIfAbsent(headers, "User-Agent", OPENCODE_CLI_USER_AGENT);
-	}
 	const sessionId = options.sessionId;
-	if (freeTier) {
-		// The gateways validate the session id's structure, so each request
-		// carries a freshly minted CLI-format id (the CLI does the same for
-		// its title-generation calls).
-		setHeader(headers, "x-opencode-session", createOpenCodeSessionId());
-	}
 	// The conversation id and the explicit cache key are independently
 	// optional: a Go sibling lane can carry its family affinity with no
 	// conversation session in hand (V1 compaction, direct client-options
@@ -171,16 +121,7 @@ export function applyInferenceHeaders(headers: Record<string, string>, options: 
 		}
 	}
 
-	if (freeTier) {
-		// The freshly minted free-tier id set above stays authoritative: the
-		// gateway rejects unstructured session/affinity keys, so no other
-		// session header applies on those lanes.
-	} else if (cliIdentity) {
-		// An opted-in Go family key doubles as the session handle even under
-		// the CLI identity; without one the conversation id is the handle.
-		const sessionKey = options.cacheAffinity ?? sessionId;
-		if (sessionKey) setHeader(headers, "x-opencode-session", sessionKey);
-	} else if (isOpenCode) {
+	if (isOpenCode) {
 		setHeaderIfAbsent(headers, "User-Agent", USER_AGENT);
 		// Go's session header doubles as the gateway's cache-affinity handle:
 		// opted-in sibling lanes (see resolveOpenCodeGoCacheAffinity) share one

@@ -274,10 +274,6 @@
 - Fixed SIGTERM interrupting an in-flight OAuth token rotation before its replacement refresh token was saved ([#15845](https://github.com/can1357/oh-my-pi/issues/15845)).
 - Fixed sessions getting stuck on HTTP 400 after replaying tool names unsupported by the target provider, including invented `proc://*` calls and Google tool names sent to Bedrock ([#15839](https://github.com/can1357/oh-my-pi/issues/15839))
 
-### Fixed
-
-- Fixed OpenCode free-tier models (`opencode-zen` / `opencode-go` models with a `-free` or `-contributor` id suffix) being rejected with a gateway `FreeTierError`: OpenCode requests now carry the OpenCode CLI's user agent, free-tier requests wear a freshly minted CLI-format session id, and turns that offer no recognized OpenCode tool get the CLI's `read` tool injected (with `tool_choice: "none"` for tool-less turns) so the gateway admits the request
-
 ## [18.11.3] - 2026-10-16
 
 ### Fixed
