@@ -5,6 +5,7 @@
 ### Fixed
 
 - The `/models` Roles view shows a role's full model selector: the selector rides the row's own label instead of a fixed-width column, so a long one like `commandcode/deepseek/deepseek-v4.1-flash` is no longer clipped past the model name; the row's tooltip carries the whole selector
+- The `/models` Roles view keeps the model name when a row is too narrow for the whole selector: the provider and the model's family segment give way first, so `deepseek-v4.1-flash` stays readable instead of clipping to `v4…`; the thinking level and cycle badge yield before the selector does
 
 ## [18.12.4] - 2026-10-20
 

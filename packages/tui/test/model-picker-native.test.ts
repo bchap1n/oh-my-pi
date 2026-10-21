@@ -6,6 +6,7 @@ import type { DescribeContext, NativeChild, NativeNode } from "../src/native/nod
 import { ModelHubComponent, type ModelHubRegistry, type ModelHubSource } from "../src/overlays/model-hub";
 import { ModelPickerComponent } from "../src/overlays/model-picker";
 import { initTheme } from "../src/theme";
+import { visibleWidth } from "../src/utils";
 import type { TUI } from "../src/tui";
 
 const withPicker: DescribeContext = {
@@ -201,6 +202,44 @@ test("a Roles row keeps a long selector's model name readable", () => {
 	]);
 	// The Model column is gone: the selector is the label now.
 	expect(p.columns?.map(column => column.id)).toEqual(["thinking"]);
+});
+
+test("a Roles fallback row carries its whole selector as a tooltip", () => {
+	// A fallback selector is as long as a role's, so it clips the same way.
+	// Its tooltip keeps the whole value.
+	const hub = openHub({ assign: [], cancel: 0 });
+	hub.handleNativeEvent({ type: "action", key: "", act: "scope", value: "roles", mods: [] });
+	const p = props(hub.describe(withPicker));
+	expect(p.items?.find(entry => entry.id === "fallback:default:0")).toMatchObject({
+		label: "openai/gpt-5.6",
+		title: "openai/gpt-5.6",
+		depth: 1,
+	});
+});
+
+test("the terminal Roles row keeps a long selector's model name readable", () => {
+	// The terminal fallback draws the same rows without the native sheet: the
+	// model id must keep its tail there too, and the row must not overflow.
+	const long = model("commandcode", "deepseek/deepseek-v4.1-flash");
+	const hub = new ModelHubComponent(
+		ui,
+		source({ default: "commandcode/deepseek/deepseek-v4.1-flash" }, []),
+		registry([long]),
+		[{ model: long }],
+		{ onAssign: () => {}, onUnassign: () => {}, onCancel: () => {} },
+	);
+	hubs.push(hub);
+	hub.handleNativeEvent({ type: "action", key: "", act: "scope", value: "roles", mods: [] });
+	const ANSI = /\x1b\[[0-9;]*m/g;
+	for (const width of [110, 90, 80, 70, 60, 50]) {
+		const row = hub.render(width).find(line => line.replace(ANSI, "").includes("default"));
+		expect(row).toBeDefined();
+		const plain = row!.replace(ANSI, "");
+		// The row never overflows the pane.
+		expect(visibleWidth(plain)).toBeLessThanOrEqual(width);
+		// The model id's tail survives every width.
+		expect(plain).toContain("flash");
+	}
 });
 
 test("Factory Droid rows carry the base credit rate and a credit-only model is never free", () => {

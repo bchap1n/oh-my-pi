@@ -40,7 +40,7 @@ import { plainText } from "../native/spans";
 import { isNativeRendering } from "../native/state";
 import { Input } from "../components/input";
 import { routeSgrMouseInput, type SgrMouseEvent } from "../mouse";
-import { truncateToWidth, visibleWidth } from "../utils";
+import { sliceByColumn, truncateToWidth, visibleWidth } from "../utils";
 import type {
 	ModelBrowserSource,
 	ModelBrowserRegistry,
@@ -294,6 +294,22 @@ const ROLES_ACTION_KEYS: Record<string, RolesAction> = {
 	p: "nextPreset",
 	P: "prevPreset",
 };
+
+/**
+ * The tail of a model id that fits `maxWidth`: its last segment first
+ * (`deepseek-v4.1-flash` out of `deepseek/deepseek-v4.1-flash`), then the
+ * tail of that segment when it is still too wide. The name is what the reader
+ * is after, so the head of the id is what goes.
+ */
+function tailSegment(id: string, maxWidth: number): string {
+	if (maxWidth <= 0) return "";
+	const segments = id.split("/");
+	const last = segments[segments.length - 1] ?? id;
+	if (visibleWidth(last) <= maxWidth) return last;
+	if (maxWidth <= 1) return maxWidth === 1 ? "…" : "";
+	const tail = sliceByColumn(last, visibleWidth(last) - (maxWidth - 1), maxWidth - 1, true);
+	return `…${tail}`;
+}
 
 /**
  * Picker fact columns of the Roles view. The model selector rides the row's
@@ -2652,20 +2668,11 @@ export class ModelHubComponent implements Component {
 
 			let dot: string;
 			let tagStyled: string;
-			let value: string;
+			let value = "";
 			let levelStyled = "";
-			// The model id identifies the row, so it gets the room; the provider
-			// is dim and gives way first. The budget is what the row has left
-			// after the cursor, dot, tag and gap.
-			const selectorWidth = Math.max(0, width - visibleWidth(tag) - 6);
-			const providerText = (provider: string): string =>
-				truncateToWidth(`${provider}/`, Math.max(0, Math.floor(selectorWidth / 3)));
 			if (assignment && !assignment.autoSelected) {
 				dot = theme.fg(info.color ?? "muted", theme.status.enabled);
 				tagStyled = theme.fg(info.color ?? "muted", tag);
-				const provider = providerText(assignment.model.provider);
-				const modelText = truncateToWidth(assignment.model.id, Math.max(0, selectorWidth - visibleWidth(provider)));
-				value = `${theme.fg("dim", provider)}${selected ? theme.fg("accent", modelText) : modelText}`;
 				const glyph = thinkingLevelGlyph(assignment.thinkingLevel, theme);
 				const label = getConfiguredThinkingLevelMetadata(assignment.thinkingLevel).label;
 				if (assignment.thinkingLevel !== ThinkingLevel.Inherit) {
@@ -2674,12 +2681,6 @@ export class ModelHubComponent implements Component {
 			} else if (assignment) {
 				dot = theme.fg("dim", theme.status.shadowed);
 				tagStyled = theme.fg("dim", tag);
-				const provider = providerText(assignment.model.provider);
-				const modelText = truncateToWidth(
-					assignment.model.id,
-					Math.max(0, selectorWidth - visibleWidth(provider) - "auto → ".length),
-				);
-				value = theme.fg("dim", `auto → ${provider}${modelText}`);
 			} else {
 				dot = theme.fg("dim", theme.status.shadowed);
 				tagStyled = theme.fg("dim", tag);
@@ -2690,11 +2691,57 @@ export class ModelHubComponent implements Component {
 			const cycleIndex = cycleOrder.indexOf(role);
 			const cycleStyled = cycleIndex >= 0 ? theme.fg("accent", `${theme.icon.loop} ${cycleIndex + 1}`) : "";
 
-			let line = ` ${cursor} ${dot} ${tagStyled}  ${value}`;
+			// The prefix and the right column are measured, not guessed, so the
+			// selector gets exactly the room that is left over. The right column
+			// yields when that room would leave the selector unreadable.
+			const prefix = ` ${cursor} ${dot} ${tagStyled}  `;
+			const prefixWidth = visibleWidth(prefix);
 			const right = [levelStyled, cycleStyled].filter(part => part.length > 0).join("  ");
 			const rightWidth = visibleWidth(right);
+			const autoPrefix = assignment?.autoSelected ? "auto → " : "";
+			const wholeSelector = assignment ? `${assignment.model.provider}/${assignment.model.id}` : "";
+			const wholeWidth = visibleWidth(autoPrefix) + visibleWidth(wholeSelector);
+			// The right column yields to the selector: the thinking level and the
+			// cycle badge are repeated in the preview panel, but the selector is
+			// the row's identity. It is kept only when the selector still fits
+			// whole beside it.
+			const keepRight = rightWidth > 0 && wholeWidth > 0 && width - prefixWidth - rightWidth - 2 >= wholeWidth;
+			const selectorWidth = Math.max(0, width - prefixWidth - (keepRight ? rightWidth + 2 : 0));
+			if (assignment) {
+				// The model id identifies the row, so it keeps both ends: the tail
+				// (`v4.1-flash`) names the model and the head names its family.
+				// The provider is dim and gives way first.
+				const providerFull = `${assignment.model.provider}/`;
+				const modelId = assignment.model.id;
+				// The row shows the selector in the order that keeps the most
+				// of it: the whole selector, then the model id alone, then the
+				// model id's own tail. The id's last segment is the model name
+				// (`deepseek-v4.1-flash`), so that is what survives the squeeze.
+				const modelOnlyWidth = selectorWidth - autoPrefix.length;
+				let provider = "";
+				let modelText: string;
+				if (wholeWidth <= selectorWidth) {
+					provider = providerFull;
+					modelText = modelId;
+				} else if (visibleWidth(modelId) <= modelOnlyWidth) {
+					modelText = modelId;
+				} else {
+					// Too tight for the whole id: the provider goes and the model
+					// name keeps the room. The provider is still on the row's
+					// scope and in the preview panel.
+					modelText = tailSegment(modelId, Math.max(0, modelOnlyWidth));
+				}
+				const modelStyled = assignment.autoSelected
+					? theme.fg("dim", modelText)
+					: selected
+						? theme.fg("accent", modelText)
+						: modelText;
+				value = `${theme.fg("dim", autoPrefix)}${theme.fg("dim", provider)}${modelStyled}`;
+			}
+
+			let line = `${prefix}${value}`;
 			const lineWidth = visibleWidth(line);
-			if (rightWidth > 0 && lineWidth + rightWidth + 2 <= width) {
+			if (keepRight && lineWidth + rightWidth + 2 <= width) {
 				line = `${line}${" ".repeat(width - lineWidth - rightWidth - 1)}${right}`;
 			}
 			line = this.#finishRolesRow(line, width, hovered);
@@ -3736,10 +3783,26 @@ export class ModelHubComponent implements Component {
 					items.push({ id, label: "New fallback chain…", icon: "plus", tone: "muted" });
 					return;
 				case "chainKey":
-					items.push({ id, label: row.role, mono: true, icon: "git-branch", detail: "fallback chain" });
+					// A chain key and a fallback selector are as long as a role's
+					// selector, so they carry the same whole-value tooltip.
+					items.push({
+						id,
+						label: row.role,
+						mono: true,
+						icon: "git-branch",
+						detail: "fallback chain",
+						title: row.role,
+					});
 					return;
 				case "fallback":
-					items.push({ id, label: row.selector, mono: true, depth: 1, detail: `fallback ${row.chainIndex + 1}` });
+					items.push({
+						id,
+						label: row.selector,
+						mono: true,
+						depth: 1,
+						detail: `fallback ${row.chainIndex + 1}`,
+						title: row.selector,
+					});
 					return;
 				case "role":
 					break;
