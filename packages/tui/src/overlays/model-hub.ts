@@ -19,6 +19,7 @@ import type {
 	TspPickerProps,
 	TspPickerScope,
 	TspSpan,
+	TspText,
 } from "@oh-my-pi/pi-wire";
 import type { KeysApi, Model } from "@oh-my-pi/pi-ai";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
@@ -294,9 +295,12 @@ const ROLES_ACTION_KEYS: Record<string, RolesAction> = {
 	P: "prevPreset",
 };
 
-/** Picker fact columns of the Roles view. */
+/**
+ * Picker fact columns of the Roles view. The model selector rides the row's
+ * own label (it is too long for a column to hold); only the thinking level
+ * stays in a column.
+ */
 const ROLE_PICKER_COLUMNS: readonly TspPickerColumn[] = [
-	{ id: "model", head: "Model", format: "text", priority: 2 },
 	{ id: "thinking", head: "Thinking", format: "dim", priority: 1 },
 ];
 
@@ -2650,10 +2654,18 @@ export class ModelHubComponent implements Component {
 			let tagStyled: string;
 			let value: string;
 			let levelStyled = "";
+			// The model id identifies the row, so it gets the room; the provider
+			// is dim and gives way first. The budget is what the row has left
+			// after the cursor, dot, tag and gap.
+			const selectorWidth = Math.max(0, width - visibleWidth(tag) - 6);
+			const providerText = (provider: string): string =>
+				truncateToWidth(`${provider}/`, Math.max(0, Math.floor(selectorWidth / 3)));
 			if (assignment && !assignment.autoSelected) {
 				dot = theme.fg(info.color ?? "muted", theme.status.enabled);
 				tagStyled = theme.fg(info.color ?? "muted", tag);
-				value = `${theme.fg("dim", `${assignment.model.provider}/`)}${selected ? theme.fg("accent", assignment.model.id) : assignment.model.id}`;
+				const provider = providerText(assignment.model.provider);
+				const modelText = truncateToWidth(assignment.model.id, Math.max(0, selectorWidth - visibleWidth(provider)));
+				value = `${theme.fg("dim", provider)}${selected ? theme.fg("accent", modelText) : modelText}`;
 				const glyph = thinkingLevelGlyph(assignment.thinkingLevel, theme);
 				const label = getConfiguredThinkingLevelMetadata(assignment.thinkingLevel).label;
 				if (assignment.thinkingLevel !== ThinkingLevel.Inherit) {
@@ -2662,7 +2674,12 @@ export class ModelHubComponent implements Component {
 			} else if (assignment) {
 				dot = theme.fg("dim", theme.status.shadowed);
 				tagStyled = theme.fg("dim", tag);
-				value = theme.fg("dim", `auto → ${assignment.model.provider}/${assignment.model.id}`);
+				const provider = providerText(assignment.model.provider);
+				const modelText = truncateToWidth(
+					assignment.model.id,
+					Math.max(0, selectorWidth - visibleWidth(provider) - "auto → ".length),
+				);
+				value = theme.fg("dim", `auto → ${provider}${modelText}`);
 			} else {
 				dot = theme.fg("dim", theme.status.shadowed);
 				tagStyled = theme.fg("dim", tag);
@@ -3731,20 +3748,35 @@ export class ModelHubComponent implements Component {
 			const tag = info.tag ?? info.name ?? row.role;
 			const assignment = this.#roles[row.role];
 			const facts: Record<string, string> = {};
+			// The selector rides the row's own label, not a fact column: a column
+			// is only as wide as the sheet allows, so a selector such as
+			// `commandcode/deepseek/deepseek-v4.1-flash` is clipped there and the
+			// model name - the part that identifies the row - is the part that
+			// goes. The label gets the room, the provider dims, and the row's
+			// tooltip carries the whole selector.
+			let label: TspText = tag;
+			let tooltip: string | undefined;
 			if (assignment) {
-				const selector = `${assignment.model.provider}/${assignment.model.id}`;
-				facts.model = assignment.autoSelected ? `auto → ${selector}` : selector;
+				const provider = `${assignment.model.provider}/`;
+				const modelId = assignment.model.id;
+				label = [
+					span(tag, "strong"),
+					span("  "),
+					span(assignment.autoSelected ? "auto → " : "", "dim"),
+					span(provider, "mono dim"),
+					span(modelId, "mono"),
+				];
+				tooltip = `${provider}${modelId}`;
 				if (assignment.thinkingLevel !== ThinkingLevel.Inherit) {
 					facts.thinking = getConfiguredThinkingLevelMetadata(assignment.thinkingLevel).label;
 				}
-			} else {
-				facts.model = "—";
 			}
 			const cycleIndex = cycleOrder.indexOf(row.role);
 			items.push({
 				id,
-				label: tag,
+				label,
 				...(info.name && info.name !== tag ? { detail: info.name } : {}),
+				...(tooltip ? { title: tooltip } : {}),
 				facts,
 				...(assignment && !assignment.autoSelected ? {} : { tone: "muted" as const }),
 				...(cycleIndex >= 0

@@ -173,6 +173,36 @@ test("the model hub describes a data-first picker when the terminal has the kind
 	expect(hub.describe(withPicker)).toBe(root);
 });
 
+test("a Roles row keeps a long selector's model name readable", () => {
+	// A real selector is longer than the sheet's Model column: `commandcode/
+	// deepseek/deepseek-v4.1-flash` clips to an unreadable tail there. The
+	// selector must ride the row's own label, and the tooltip must keep the
+	// whole selector.
+	const long = model("commandcode", "deepseek/deepseek-v4.1-flash");
+	const hub = new ModelHubComponent(
+		ui,
+		source({ default: "commandcode/deepseek/deepseek-v4.1-flash" }, []),
+		registry([long]),
+		[{ model: long }],
+		{ onAssign: () => {}, onUnassign: () => {}, onCancel: () => {} },
+	);
+	hubs.push(hub);
+	hub.handleNativeEvent({ type: "action", key: "", act: "scope", value: "roles", mods: [] });
+	const p = props(hub.describe(withPicker));
+	const row = p.items?.find(entry => entry.id === "role:default");
+	expect(row?.title).toBe("commandcode/deepseek/deepseek-v4.1-flash");
+	const label = row?.label;
+	expect(Array.isArray(label) ? label : []).toEqual([
+		{ t: "default", s: "strong" },
+		{ t: "  " },
+		{ t: "", s: "dim" },
+		{ t: "commandcode/", s: "mono dim" },
+		{ t: "deepseek/deepseek-v4.1-flash", s: "mono" },
+	]);
+	// The Model column is gone: the selector is the label now.
+	expect(p.columns?.map(column => column.id)).toEqual(["thinking"]);
+});
+
 test("Factory Droid rows carry the base credit rate and a credit-only model is never free", () => {
 	const priced = { ...model("factory-droid", "claude-opus-5"), factoryDroidCredits: 2 };
 	const creditOnly = {
@@ -278,7 +308,19 @@ test("pointer events drive the hub through the same paths as its keys", () => {
 		label: "openai/gpt-5.6",
 		depth: 1,
 	});
-	expect(p.items?.find(entry => entry.id === "role:default")?.facts).toEqual({ model: "demo/demo", thinking: "off" });
+	// The selector rides the row's own label, not a fact column: a column is
+	// only as wide as the sheet allows, so a long selector would clip the model
+	// name away. The row's tooltip carries the whole selector.
+	const defaultRow = p.items?.find(entry => entry.id === "role:default");
+	expect(defaultRow?.facts).toEqual({ thinking: "off" });
+	expect(defaultRow?.title).toBe("demo/demo");
+	expect(defaultRow?.label).toEqual([
+		{ t: "default", s: "strong" },
+		{ t: "  " },
+		{ t: "", s: "dim" },
+		{ t: "demo/", s: "mono dim" },
+		{ t: "demo", s: "mono" },
+	]);
 	expect(groups(p)).toContain("Model fallback chains");
 	// The head's total counts the rows Tern counts as shown (fallbacks, chains, "New …" rows), so All reads no "N of M".
 	expect(p.total).toBe(p.order?.filter(entry => typeof entry === "string").length);
