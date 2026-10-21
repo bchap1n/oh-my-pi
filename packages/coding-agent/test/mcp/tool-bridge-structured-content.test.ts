@@ -20,6 +20,9 @@ afterAll(() => setCurrentTheme(restoreTheme));
 function toolFor(result: MCPToolCallResult | ((params: MCPToolCallParams) => MCPToolCallResult)): MCPTool {
 	const connection = {
 		name: "rhizome-mcp",
+		config: { type: "stdio" as const, command: "rhizome-mcp" },
+		era: "legacy" as const,
+		protocolVersion: "2025-11-25",
 		transport: {
 			request: async (method: string, params: MCPToolCallParams) => {
 				if (method === "tools/call") return typeof result === "function" ? result(params) : result;
