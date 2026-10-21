@@ -48,6 +48,8 @@ function connectionFor(handler: (options?: MCPRequestOptions) => MCPToolCallResu
 		name: "progress-server",
 		config: { type: "stdio", command: "fixture" },
 		capabilities: { tools: {} },
+		era: "legacy",
+		protocolVersion: "2025-11-25",
 		serverInfo: { name: "fixture", version: "1" },
 		_source: { provider: "fixture", providerName: "Fixture", path: "/fixture", level: "native" },
 		transport: {

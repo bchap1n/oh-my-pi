@@ -270,7 +270,7 @@ describe("MCP Streamable HTTP initialization", () => {
 			timeout: GUARD_TIMEOUT_MS,
 		});
 
-		expect(requests).toEqual(["initialize", "notifications/initialized", "GET"]);
+		expect(requests).toEqual(["server/discover", "initialize", "notifications/initialized", "GET"]);
 		await connection.transport.close();
 	});
 
