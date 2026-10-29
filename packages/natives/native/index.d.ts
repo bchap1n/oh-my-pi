@@ -528,7 +528,12 @@ export declare class Process {
   status(): ProcessStatus
 }
 
-/** Persistent PowerShell host backed by a long-lived `pwsh` sidecar. */
+/**
+ * Persistent PowerShell host backed by a long-lived `pwsh` sidecar.
+ *
+ * Dropping the handle without [`PsHost::dispose`] force-kills the sidecar
+ * tree; callers must keep the handle reachable while a `run()` is pending.
+ */
 export declare class PsHost {
   /**
    * Create a host handle. The sidecar is not launched until [`PsHost::start`]
@@ -539,6 +544,8 @@ export declare class PsHost {
    * Launch the sidecar (idempotent) and wait for its ready handshake.
    *
    * Returns the sidecar PID, usable with `Enter-PSHostProcess` for debugging.
+   * A host is one-shot: once its sidecar has exited (crash, startup
+   * timeout, or [`PsHost::dispose`]), `start()` rejects; create a new host.
    */
   start(): Promise<number>
   /** PID of the sidecar (`0` until [`PsHost::start`] completes). */
@@ -568,7 +575,8 @@ export declare class PsHost {
   abort(): void
   /**
    * Gracefully shut down the sidecar: send `exit`, wait briefly, then
-   * hard-kill the process tree if it has not exited.
+   * hard-kill the process tree if it has not exited. The host is terminal
+   * afterwards: `start()` and `run()` reject.
    */
   dispose(): Promise<void>
 }
