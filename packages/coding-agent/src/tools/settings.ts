@@ -1128,7 +1128,12 @@ export const cfgPowerShellEnabled = register({
 	id: "powershell.enabled",
 	type: "boolean",
 	default: false,
-	ui: { tab: "tools", group: "Available Tools", label: "PowerShell", description: "Enable the persistent PowerShell tool" },
+	ui: {
+		tab: "tools",
+		group: "Available Tools",
+		label: "PowerShell",
+		description: "Enable the persistent PowerShell tool",
+	},
 });
 
 export const cfgPowerShellShellPath = register({ id: "powershell.shellPath", type: "string", default: undefined });
