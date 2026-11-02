@@ -601,6 +601,17 @@ suite("PowerShellTool (persistent host)", () => {
 		const disabled = await createTools(sessionWith({}));
 		expect(disabled.map(tool => tool.name)).not.toContain("powershell");
 	});
+
+	test("hosts run with the non-interactive environment", async () => {
+		// Without this environment, `git commit` with no message opens an editor
+		// and blocks the call until the timeout.
+		const tool = await loadPowerShellTool(fakeSession("ps-noninteractive-env"));
+		expect(tool).not.toBeNull();
+		if (!tool) return;
+
+		const result = await tool.execute("e1", { command: '"$env:GIT_TERMINAL_PROMPT|$env:GCM_INTERACTIVE"' });
+		expect(textOf(result).trim()).toBe("0|never");
+	});
 });
 
 // Ungated: these need neither pwsh nor a live host.
