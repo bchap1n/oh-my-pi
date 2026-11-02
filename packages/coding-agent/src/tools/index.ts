@@ -99,6 +99,7 @@ import {
 	cfgTodoEnabled,
 	cfgToolsXdev,
 	cfgWebSearchEnabled,
+	cfgPowerShellEnabled,
 } from "./settings";
 import { cfgAutolearnEnabled } from "../autolearn/settings";
 import { cfgBashEnabled } from "../exec/settings";
@@ -815,7 +816,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		// Without an edit tool, bash is the remaining way to modify existing files.
 		if (name === "edit") return !editDisabled;
 		if (name === "bash") return editDisabled || cfgBashEnabled.get(session.settings);
-		if (name === "powershell") return session.settings.get("powershell.enabled");
+		if (name === "powershell") return cfgPowerShellEnabled.get(session.settings);
 		if (name === "eval") return allowEval;
 		if (name === "debug") return cfgDebugEnabled.get(session.settings);
 		if (name === "todo")

@@ -1297,7 +1297,10 @@ export class SessionTools {
 						? [
 								{
 									type: "content" as const,
-									content: { type: "text" as const, text: `${target.name === "powershell" ? "PS> " : "$ "}${command}` },
+									content: {
+										type: "text" as const,
+										text: `${target.name === "powershell" ? "PS> " : "$ "}${command}`,
+									},
 								},
 							]
 						: undefined;
