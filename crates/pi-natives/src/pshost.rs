@@ -190,7 +190,7 @@ pub struct PsRunResult {
 	/// `$LASTEXITCODE` itself persists in the runspace, but a stale value from
 	/// an earlier call is never attributed here.
 	pub exit_code:  Option<i32>,
-	/// Whether the command wrote to the error stream or set `HadErrors`.
+	/// Whether the command failed. Exit-0 native stderr does not count.
 	pub had_errors: bool,
 	/// Whether the command was cancelled (abort signal or external stop).
 	pub cancelled:  bool,

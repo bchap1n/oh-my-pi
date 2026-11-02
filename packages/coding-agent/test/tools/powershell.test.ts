@@ -612,6 +612,56 @@ suite("PowerShellTool (persistent host)", () => {
 		const result = await tool.execute("e1", { command: '"$env:GIT_TERMINAL_PROMPT|$env:GCM_INTERACTIVE"' });
 		expect(textOf(result).trim()).toBe("0|never");
 	});
+
+	test("native stderr alone does not fail a call; the exit code decides", async () => {
+		const tool = await loadPowerShellTool(fakeSession("ps-native-stderr"));
+		expect(tool).not.toBeNull();
+		if (!tool) return;
+
+		const win = process.platform === "win32";
+		const exitZero = win ? 'cmd /c "echo warn-text 1>&2 & exit 0"' : "/bin/sh -c 'echo warn-text >&2; exit 0'";
+		const ok = await tool.execute("n1", { command: exitZero });
+		expect(ok.isError ?? false).toBe(false);
+		expect(textOf(ok)).toContain("warn-text");
+
+		const exitFour = win ? 'cmd /c "echo warn-text 1>&2 & exit 4"' : "/bin/sh -c 'echo warn-text >&2; exit 4'";
+		const failed = await tool.execute("n2", { command: exitFour });
+		expect(failed.isError).toBe(true);
+		expect(textOf(failed)).toContain("warn-text");
+		expect(textOf(failed)).toContain("code 4");
+	});
+
+	test("a native failure inside a function fails the call", async () => {
+		// PowerShell.HadErrors stays false for this case, so it must not be the
+		// failure signal.
+		const tool = await loadPowerShellTool(fakeSession("ps-native-in-function"));
+		expect(tool).not.toBeNull();
+		if (!tool) return;
+
+		const native = process.platform === "win32" ? "cmd /c exit 3" : "/bin/sh -c 'exit 3'";
+		const result = await tool.execute("n1", { command: `function Invoke-Native { ${native} }; Invoke-Native` });
+		expect(result.isError).toBe(true);
+		expect(textOf(result)).toContain("code 3");
+	});
+
+	test("errors the command handled do not fail the call", async () => {
+		// PowerShell.HadErrors is true for both idioms below.
+		const tool = await loadPowerShellTool(fakeSession("ps-handled-errors"));
+		expect(tool).not.toBeNull();
+		if (!tool) return;
+
+		const silenced = await tool.execute("h1", {
+			command: "Get-Item omp-no-such-item-zzz -ErrorAction SilentlyContinue; 'silent ok'",
+		});
+		expect(silenced.isError ?? false).toBe(false);
+		expect(textOf(silenced).trim()).toBe("silent ok");
+
+		const caught = await tool.execute("h2", {
+			command: "try { Get-Item omp-no-such-item-zzz -ErrorAction Stop } catch { 'caught ok' }",
+		});
+		expect(caught.isError ?? false).toBe(false);
+		expect(textOf(caught).trim()).toBe("caught ok");
+	});
 });
 
 // Ungated: these need neither pwsh nor a live host.

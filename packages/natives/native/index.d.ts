@@ -3279,7 +3279,7 @@ export interface PsRunResult {
    * an earlier call is never attributed here.
    */
   exitCode?: number
-  /** Whether the command wrote to the error stream or set `HadErrors`. */
+  /** Whether the command failed. Exit-0 native stderr does not count. */
   hadErrors: boolean
   /** Whether the command was cancelled (abort signal or external stop). */
   cancelled: boolean
