@@ -589,10 +589,9 @@ suite("PowerShellTool (persistent host)", () => {
 // Ungated: these need neither pwsh nor a live host.
 
 test("loadPowerShellTool returns null when no shell resolves", async () => {
-	// The stub returns a bogus shellPath for every settings key the loader
-	// reads, so $which cannot resolve it and the tool must stay unregistered.
-	const stubSettings = { get: () => "omp-no-such-shell-zzz-12345" };
-	const session = { cwd: process.cwd(), settings: stubSettings } as unknown as ToolSession;
+	// $which cannot resolve this shellPath, so the tool must stay unregistered.
+	const missingShell = Settings.isolated({ "powershell.shellPath": "omp-no-such-shell-zzz-12345" });
+	const session = { cwd: process.cwd(), settings: missingShell } as unknown as ToolSession;
 	expect(await loadPowerShellTool(session)).toBeNull();
 });
 

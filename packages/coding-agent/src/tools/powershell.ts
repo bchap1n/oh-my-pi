@@ -11,6 +11,13 @@ import { truncateForPrompt } from "./approval";
 import { outputMeta, resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "./output-meta";
 import { resolveToCwd } from "./path-utils";
 import { acquirePsHost, disposePsHostSession, spawnEphemeralPsHost } from "./pshost-manager";
+import {
+	cfgPowerShellHistoryDepth,
+	cfgPowerShellIdleTtlMs,
+	cfgPowerShellOutputWidth,
+	cfgPowerShellShellPath,
+	cfgToolsMaxTimeout,
+} from "./settings";
 import { ToolAbortError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout } from "./tool-timeouts";
@@ -102,19 +109,19 @@ export class PowerShellTool implements AgentTool<typeof powershellSchema, PowerS
 		_ctx?: AgentToolContext,
 	): Promise<AgentToolResult<PowerShellToolDetails>> {
 		const settings = this.session.settings;
-		const timeoutSec = clampTimeout("powershell", rawTimeout, settings.get("tools.maxTimeout"));
+		const timeoutSec = clampTimeout("powershell", rawTimeout, cfgToolsMaxTimeout.get(settings));
 
 		const spawnOptions = {
 			cwd: this.session.cwd,
-			shellPath: settings.get("powershell.shellPath")?.trim() || undefined,
-			historyDepth: settings.get("powershell.historyDepth"),
+			shellPath: cfgPowerShellShellPath.get(settings)?.trim() || undefined,
+			historyDepth: cfgPowerShellHistoryDepth.get(settings),
 		};
 
 		// Everything fallible on the input path runs BEFORE a host is acquired:
 		// a rejected cwd or artifact failure must not leak an ephemeral pwsh or
 		// strand a session lease (leases pin the host against idle eviction).
 		const resolvedCwd = cwd ? resolveToCwd(cwd, this.session.cwd) : undefined;
-		const width = settings.get("powershell.outputWidth");
+		const width = cfgPowerShellOutputWidth.get(settings);
 
 		const tailBuffer = new TailBuffer(DEFAULT_MAX_BYTES);
 		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("powershell")) ?? {};
@@ -155,7 +162,7 @@ export class PowerShellTool implements AgentTool<typeof powershellSchema, PowerS
 			const lease = await acquirePsHost({
 				...spawnOptions,
 				sessionId: sessionKey,
-				idleTtlMs: settings.get("powershell.idleTtlMs"),
+				idleTtlMs: cfgPowerShellIdleTtlMs.get(settings),
 			});
 			host = lease.host;
 			teardown = lease.release;
@@ -248,7 +255,7 @@ export class PowerShellTool implements AgentTool<typeof powershellSchema, PowerS
 /** Factory: only expose the tool when a pwsh executable is resolvable. */
 export async function loadPowerShellTool(session: ToolSession): Promise<PowerShellTool | null> {
 	const settings = session.settings;
-	const shellPath = settings.get("powershell.shellPath")?.trim();
+	const shellPath = cfgPowerShellShellPath.get(settings)?.trim();
 	const probe = shellPath || "pwsh";
 	const resolved = await $which(probe);
 	if (!resolved) return null;
