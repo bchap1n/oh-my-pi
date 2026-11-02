@@ -84,7 +84,7 @@ export class PowerShellTool implements AgentTool<typeof powershellSchema, PowerS
 	};
 	readonly summary =
 		"Execute PowerShell in a persistent host whose session state (variables, modules, last result objects) is retained across calls";
-	readonly loadMode = "discoverable";
+	readonly loadMode = "essential";
 	readonly label = "PowerShell";
 	readonly parameters = powershellSchema;
 	// Ephemeral runs share nothing (own process, own runspace, never pooled),
