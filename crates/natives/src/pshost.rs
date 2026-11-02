@@ -770,6 +770,10 @@ fn bootstrap_is_valid(path: &std::path::Path, hash: u64) -> bool {
 /// another user could pre-create valid bytes and rewrite them between hash
 /// validation and `pwsh -File` opening the file. On Windows `%TEMP%` is
 /// already per-user.
+#[cfg_attr(
+	windows,
+	expect(clippy::unnecessary_wraps, reason = "only the Unix branch can return an error")
+)]
 fn bootstrap_dir() -> Result<PathBuf> {
 	#[cfg(unix)]
 	{
