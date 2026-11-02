@@ -22,6 +22,7 @@
 
 import { PsHost } from "@oh-my-pi/pi-natives";
 import { logger } from "@oh-my-pi/pi-utils";
+import { buildNonInteractiveEnv } from "../exec/non-interactive-env";
 
 interface HostEntry {
 	host: PsHost;
@@ -83,6 +84,7 @@ const spawnRealHost: PsHostSpawner = async options => {
 		shellPath: options.shellPath,
 		cwd: options.cwd,
 		historyDepth: options.historyDepth,
+		sessionEnv: buildNonInteractiveEnv(),
 	});
 	try {
 		await host.start();
