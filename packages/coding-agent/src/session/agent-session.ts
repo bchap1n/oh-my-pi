@@ -258,7 +258,6 @@ import {
 } from "../tools/computer/supervisor";
 import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { disposePsHostSession } from "../tools/pshost-manager";
-import { normalizeLocalScheme, resolveToCwd } from "../tools/path-utils";
 import {
 	buildResolveReminderMessage,
 	isPreviewResolutionToolCall,

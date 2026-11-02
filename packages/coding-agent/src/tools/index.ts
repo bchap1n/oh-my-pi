@@ -95,6 +95,7 @@ import {
 	cfgTodoEnabled,
 	cfgToolsXdev,
 	cfgWebSearchEnabled,
+	cfgPowerShellEnabled,
 } from "./settings";
 import { cfgAutolearnEnabled } from "../autolearn/settings";
 import { cfgBashEnabled } from "../exec/settings";
@@ -759,7 +760,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		if (name === "lsp") return enableLsp && cfgLspEnabled.get(session.settings);
 		if (name === "bash") return cfgBashEnabled.get(session.settings);
-		if (name === "powershell") return session.settings.get("powershell.enabled");
+		if (name === "powershell") return cfgPowerShellEnabled.get(session.settings);
 		if (name === "eval") return allowEval;
 		if (name === "debug") return cfgDebugEnabled.get(session.settings);
 		if (name === "ida") return cfgIdaAvailable.get(session.settings);
