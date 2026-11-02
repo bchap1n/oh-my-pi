@@ -7,7 +7,7 @@ import { getThemeByName } from "@oh-my-pi/pi-tui/theme/theme";
 import { powershellToolRenderer } from "@oh-my-pi/pi-tui/tools/powershell";
 import { $which } from "@oh-my-pi/pi-utils";
 import { Settings } from "../../src/config/settings";
-import type { ToolSession } from "../../src/tools";
+import { createTools, type ToolSession } from "../../src/tools";
 import { loadPowerShellTool, type PowerShellToolDetails } from "../../src/tools/powershell";
 import { acquirePsHost, disposeAllPsHosts, setPsHostSpawnerForTests } from "../../src/tools/pshost-manager";
 
@@ -583,6 +583,23 @@ suite("PowerShellTool (persistent host)", () => {
 		await expect(tool.execute("t1", { command: "Start-Sleep -Seconds 30" })).rejects.toThrow(/timed out/i);
 		const elapsedMs = Date.now() - started;
 		expect(elapsedMs).toBeLessThan(15_000);
+	});
+
+	test("an enabled tool is listed at the top level, not under xd://", async () => {
+		const sessionWith = (overrides: Record<string, unknown>) =>
+			({
+				cwd: process.cwd(),
+				hasUI: false,
+				getSessionFile: () => null,
+				getSessionSpawns: () => "*",
+				settings: Settings.isolated(overrides),
+			}) as unknown as ToolSession;
+
+		const enabled = await createTools(sessionWith({ "powershell.enabled": true }));
+		expect(enabled.map(tool => tool.name)).toContain("powershell");
+
+		const disabled = await createTools(sessionWith({}));
+		expect(disabled.map(tool => tool.name)).not.toContain("powershell");
 	});
 });
 
