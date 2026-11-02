@@ -132,9 +132,37 @@ $stdout = [Omp.Stdio]::DetachStdout()
 # ConcurrentQueue is lock-free for exactly this producer/consumer pattern,
 # so Drain() is always safe to call from the main thread.
 Add-Type -TypeDefinition @'
+using System;
 using System.Collections.Concurrent;
+using System.Globalization;
+using System.Management.Automation.Host;
 using System.Text;
 namespace Omp {
+    // Behaves like the engine's internal DefaultHost: no UI and no nested prompts.
+    // It also records the code from an `exit` that reaches the pipeline, such as
+    // an `exit` in the command text. The engine reports that code only through
+    // SetShouldExit. An `exit` in a script file sets $LASTEXITCODE instead.
+    public class SessionHost : PSHost {
+        readonly Guid instanceId = Guid.NewGuid();
+        readonly CultureInfo culture = CultureInfo.CurrentCulture;
+        readonly CultureInfo uiCulture = CultureInfo.CurrentUICulture;
+        readonly Version version;
+        readonly object exitLock = new object();
+        int? exitCode;
+        public SessionHost(Version version) { this.version = version; }
+        public override string Name { get { return "Default Host"; } }
+        public override Version Version { get { return version; } }
+        public override Guid InstanceId { get { return instanceId; } }
+        public override PSHostUserInterface UI { get { return null; } }
+        public override CultureInfo CurrentCulture { get { return culture; } }
+        public override CultureInfo CurrentUICulture { get { return uiCulture; } }
+        public override void EnterNestedPrompt() { throw new NotSupportedException(); }
+        public override void ExitNestedPrompt() { throw new NotSupportedException(); }
+        public override void NotifyBeginApplication() { }
+        public override void NotifyEndApplication() { }
+        public override void SetShouldExit(int code) { lock (exitLock) { exitCode = code; } }
+        public int? TakeExitCode() { lock (exitLock) { var code = exitCode; exitCode = null; return code; } }
+    }
     public class QueueWriter : System.IO.TextWriter {
         readonly ConcurrentQueue<string> q = new ConcurrentQueue<string>();
         public override Encoding Encoding { get { return Encoding.UTF8; } }
@@ -214,7 +242,8 @@ function Write-Chunk([int] $Id, [string] $Stream, [string] $Text) {
 }
 
 # ── Shared session runspace (state lives here, across exec calls) ─────────────
-$rs = [RunspaceFactory]::CreateRunspace()
+$script:sessionHost = [Omp.SessionHost]::new($Host.Version)
+$rs = [RunspaceFactory]::CreateRunspace($script:sessionHost)
 $rs.Open()
 
 function Invoke-OnRunspace([string] $Script, [object[]] $Arguments) {
@@ -347,6 +376,7 @@ function Start-Exec([pscustomobject] $Request) {
     # at parse time, so the in-band reset would never run and Complete-Exec
     # would read a stale __ompExit left by an earlier native command.
     $rs.SessionStateProxy.SetVariable('__ompExit', $null)
+    [void]$script:sessionHost.TakeExitCode()
     if ($Request.env) {
         foreach ($p in $Request.env.PSObject.Properties) {
             # Process-scoped and never unset: per-call env persists for the
@@ -612,12 +642,21 @@ function Complete-Exec {
     try { $ec = $rs.SessionStateProxy.GetVariable('__ompExit') } catch { } # best-effort
     $exitCode = if ($null -ne $ec) { [int]$ec } else { $null }
 
+    # An `exit` in the command text stops the pipeline without a write to
+    # $LASTEXITCODE, so the session host holds the only copy of its code. Write
+    # the code to $LASTEXITCODE to match an `exit` in a script file.
+    $inlineExit = $script:sessionHost.TakeExitCode()
+    if ($null -ne $inlineExit) {
+        $exitCode = [int]$inlineExit
+        try { $rs.SessionStateProxy.SetVariable('LASTEXITCODE', $exitCode) } catch { } # best-effort
+    }
+
     # Do not use PS.HadErrors as the failure signal. It is true for errors that
     # the command handled (-ErrorAction SilentlyContinue, try/catch) and for
     # native stderr with exit code 0. It is false for a native failure inside a
     # function or script block. Use PS.HadErrors only to tell a native failure
     # from a command that assigned $LASTEXITCODE itself.
-    $exitFailed = ($null -ne $exitCode) -and ($exitCode -ne 0) -and ((-not $cur.AssignsLastExit) -or $cur.PS.HadErrors)
+    $exitFailed = ($null -ne $exitCode) -and ($exitCode -ne 0) -and (($null -ne $inlineExit) -or (-not $cur.AssignsLastExit) -or $cur.PS.HadErrors)
     $hadErrors = $cur.HadErrorRecords -or $cur.HadConsoleErr -or ($null -ne $terminatingErrorText) -or $exitFailed
 
     $cur.PS.Dispose()

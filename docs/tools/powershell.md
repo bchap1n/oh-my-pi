@@ -40,7 +40,7 @@ Failure behavior:
 
 - Timeout → thrown `ToolError` (output preserved); the runspace and all retained state survive — only the in-flight pipeline is stopped. If the stop is not acknowledged within 3s (pipeline wedged in an uncooperative native/.NET call), the sidecar is force-killed; the pool detects the dead host via `PsHost.alive` and respawns lazily on the next call.
 - Abort signal → thrown `ToolAbortError`.
-- Non-zero exit code from a native command run by this call, or PowerShell error-stream writes → non-thrown `isError` result with output preserved. Native stderr text with exit code 0 and errors the command handled are not failures. A stale `$LASTEXITCODE` persisting from an earlier call is never attributed to the current one.
+- Non-zero exit code from a native command or an `exit N` in this call, or PowerShell error-stream writes → non-thrown `isError` result with output preserved. Native stderr text with exit code 0 and errors the command handled are not failures. A stale `$LASTEXITCODE` persisting from an earlier call is never attributed to the current one.
 
 ## Flow
 1. `loadPowerShellTool()` returns `null` unless a `pwsh` (or configured `powershell.shellPath`) executable resolves via `$which`, so the tool is unregistered when PowerShell is absent.
@@ -93,7 +93,7 @@ Failure behavior:
 - Host startup failure or handshake timeout → thrown `ToolError` from `start()` ("PowerShell host startup timed out" / spawn error).
 - Timeout → `ToolError` with preserved output and `Command timed out after N seconds`.
 - Abort → `ToolAbortError`.
-- Non-zero exit from a native command run by this call / PowerShell error-stream writes → non-thrown `isError` result.
+- Non-zero exit from a native command or an `exit N` in this call / PowerShell error-stream writes → non-thrown `isError` result.
 
 ## Notes
 - The process spawn (~1s) is paid once per session; warm per-call cost is ~20–30 ms.

@@ -662,6 +662,36 @@ suite("PowerShellTool (persistent host)", () => {
 		expect(caught.isError ?? false).toBe(false);
 		expect(textOf(caught).trim()).toBe("caught ok");
 	});
+
+	test("an inline exit reports its code and keeps the session", async () => {
+		const tool = await loadPowerShellTool(fakeSession("ps-inline-exit"));
+		expect(tool).not.toBeNull();
+		if (!tool) return;
+
+		const failed = await tool.execute("x1", { command: "$kept = 'yes'; 'before'; exit 5" });
+		expect(failed.isError).toBe(true);
+		expect(failed.details?.exitCode).toBe(5);
+		expect(textOf(failed)).toContain("before");
+		expect(textOf(failed)).toContain("code 5");
+
+		// Runspace state and $LASTEXITCODE match an `exit` in a script file.
+		const after = await tool.execute("x2", { command: '"kept=$kept lec=$LASTEXITCODE"' });
+		expect(after.isError ?? false).toBe(false);
+		expect(textOf(after).trim()).toBe("kept=yes lec=5");
+
+		const success = await tool.execute("x3", { command: "'done'; exit 0" });
+		expect(success.isError ?? false).toBe(false);
+		expect(textOf(success).trim()).toBe("done");
+
+		// A later call must not inherit the code from an earlier `exit`.
+		const next = await tool.execute("x4", { command: "'next'" });
+		expect(next.isError ?? false).toBe(false);
+		expect(next.details?.exitCode).toBeUndefined();
+
+		const nested = await tool.execute("x5", { command: "function Stop-Run { exit 6 }; Stop-Run" });
+		expect(nested.isError).toBe(true);
+		expect(textOf(nested)).toContain("code 6");
+	});
 });
 
 // Ungated: these need neither pwsh nor a live host.
