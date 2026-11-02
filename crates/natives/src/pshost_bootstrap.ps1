@@ -186,6 +186,8 @@ function Write-Frame([hashtable] $Object) {
 # stays meaningful wherever ANSI is ignored (e.g. the model transcript).
 $ESC = [char]27
 $NL  = [Environment]::NewLine
+# FullyQualifiedErrorId values of error records that hold native stderr text.
+$NativeStderrErrorIds = @('NativeCommandError', 'NativeCommandErrorMessage')
 function Format-AnsiText([string] $Text, [string] $Sgr) {
     if (-not $Text) { return '' }
     (($Text -split "\r?\n") | ForEach-Object {
@@ -305,6 +307,19 @@ function Test-HasTopLevelReturn([string] $Command) {
     return $false
 }
 
+# Detects a direct assignment to $LASTEXITCODE in $Command. That value is not a
+# native exit status, so Complete-Exec does not report it as a failure.
+function Test-AssignsLastExitCode([string] $Command) {
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Command, [ref] $tokens, [ref] $parseErrors)
+    $assignments = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)
+    foreach ($assignment in $assignments) {
+        if ($assignment.Left.Extent.Text -match '\$(global:|script:)?LASTEXITCODE\b') { return $true }
+    }
+    return $false
+}
+
 function Start-Exec([pscustomobject] $Request) {
     $id      = [int]$Request.id
     $command = [string]$Request.command
@@ -399,6 +414,7 @@ if ((`$global:__ompNativeRan -or `$global:LASTEXITCODE -ne `$global:__ompPrevExi
     $async = $ps.BeginInvoke([System.Management.Automation.PSDataCollection[psobject]]$null, $out)
     $script:current = @{
         Id = $id; PS = $ps; Async = $async; Out = $out; Width = $width; Stopped = $false
+        AssignsLastExit = (Test-AssignsLastExitCode $command)
         # High-water marks for incremental stream publishing (Publish-Streams).
         InfoIdx = 0; WarnIdx = 0; VerboseIdx = 0; DebugIdx = 0; ErrorIdx = 0
         # Sticky flag: Error records are released like the other streams
@@ -486,8 +502,19 @@ function Publish-Streams([hashtable] $Cur) {
     }
     $n = $s.Error.Count
     if ($n -gt $Cur.ErrorIdx) {
-        $Cur.HadErrorRecords = $true
-        $text = $(for ($i = $Cur.ErrorIdx; $i -lt $n; $i++) { $s.Error[$i] }) | Out-String -Width $Cur.Width
+        $records = @(for ($i = $Cur.ErrorIdx; $i -lt $n; $i++) { $s.Error[$i] })
+        # Native stderr text reaches this stream as NativeCommandError records.
+        # Many tools write progress and warnings to stderr and then exit 0, so
+        # these records do not mark a failure. Complete-Exec uses the exit code.
+        if (-not $Cur.HadErrorRecords) {
+            foreach ($record in $records) {
+                if ($record.FullyQualifiedErrorId -notin $NativeStderrErrorIds) {
+                    $Cur.HadErrorRecords = $true
+                    break
+                }
+            }
+        }
+        $text = $records | Out-String -Width $Cur.Width
         for ($i = $n - 1; $i -ge 0; $i--) { $s.Error.RemoveAt($i) }
         $Cur.ErrorIdx = 0
         Write-Chunk -Id $Cur.Id -Stream 'error' -Text (Format-AnsiText $text '31;1')
@@ -575,7 +602,6 @@ function Complete-Exec {
     # written since the last poll (or the whole thing, for a fast command
     # that never got polled while running) and sets HadConsoleErr.
     Publish-Streams $cur
-    $hadErrors = [bool]$cur.PS.HadErrors -or $cur.HadErrorRecords -or $cur.HadConsoleErr -or ($null -ne $terminatingErrorText)
 
     # Per-invocation exit code: the wrapped script records __ompExit only when
     # this pipeline ran a native/external-script command (LASTEXITCODE write
@@ -585,6 +611,14 @@ function Complete-Exec {
     $ec = $null
     try { $ec = $rs.SessionStateProxy.GetVariable('__ompExit') } catch { } # best-effort
     $exitCode = if ($null -ne $ec) { [int]$ec } else { $null }
+
+    # Do not use PS.HadErrors as the failure signal. It is true for errors that
+    # the command handled (-ErrorAction SilentlyContinue, try/catch) and for
+    # native stderr with exit code 0. It is false for a native failure inside a
+    # function or script block. Use PS.HadErrors only to tell a native failure
+    # from a command that assigned $LASTEXITCODE itself.
+    $exitFailed = ($null -ne $exitCode) -and ($exitCode -ne 0) -and ((-not $cur.AssignsLastExit) -or $cur.PS.HadErrors)
+    $hadErrors = $cur.HadErrorRecords -or $cur.HadConsoleErr -or ($null -ne $terminatingErrorText) -or $exitFailed
 
     $cur.PS.Dispose()
     Write-Frame @{ type = 'done'; id = $cur.Id; exitCode = $exitCode; hadErrors = $hadErrors; stopped = [bool]$cur.Stopped }
