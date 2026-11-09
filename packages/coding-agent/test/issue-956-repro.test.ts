@@ -223,6 +223,8 @@ describe("interactive /mcp test", () => {
 			transport,
 			serverInfo: { name: "GitHub MCP", version: "1.0.0" },
 			capabilities: {},
+			era: "modern" as const,
+			protocolVersion: "2026-07-28",
 		};
 		vi.spyOn(mcpClient, "connectToServer").mockResolvedValue(connection);
 		vi.spyOn(mcpClient, "listTools").mockResolvedValue([{ name: "search_issues" }] as never);
