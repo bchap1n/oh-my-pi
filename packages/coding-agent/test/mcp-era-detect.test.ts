@@ -89,13 +89,13 @@ describe("MCP era detection", () => {
 		const discoverCalls: number[] = [];
 		const { connection, seen } = await connectHttp((_req, seen) => {
 			if (seen.jsonMethods.at(-1) === "server/discover") discoverCalls.push(discoverCalls.length);
-		if (discoverCalls.length === 1) {
-			return Response.json({
-				jsonrpc: "2.0",
-				id: 1,
-				error: { code: -32022, message: "unsupported version", data: { supported: ["2026-07-28"] } },
-			});
-		}
+			if (discoverCalls.length === 1) {
+				return Response.json({
+					jsonrpc: "2.0",
+					id: 1,
+					error: { code: -32022, message: "unsupported version", data: { supported: ["2026-07-28"] } },
+				});
+			}
 			return Response.json({
 				jsonrpc: "2.0",
 				id: 1,

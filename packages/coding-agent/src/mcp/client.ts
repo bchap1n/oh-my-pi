@@ -493,8 +493,7 @@ export async function connectToServer(
 	const connect = async (): Promise<HostedMCPConnection> => {
 		await link.connect(signal);
 		connection.era = link.era ?? "legacy";
-		connection.protocolVersion =
-			connection.era === "modern" ? MCP_PROTOCOL_VERSION : MCP_LEGACY_PROTOCOL_VERSION;
+		connection.protocolVersion = connection.era === "modern" ? MCP_PROTOCOL_VERSION : MCP_LEGACY_PROTOCOL_VERSION;
 		await discoverServer(connection, { signal });
 		try {
 			await listens.openLists();

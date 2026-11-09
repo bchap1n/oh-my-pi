@@ -195,7 +195,6 @@ export class HostLink implements MCPTransport {
 		return this.#status;
 	}
 
-
 	/** The era the host resolved this server as, once attached. */
 	get era(): McpEra | undefined {
 		return this.#era;

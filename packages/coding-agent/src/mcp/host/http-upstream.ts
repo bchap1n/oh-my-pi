@@ -157,7 +157,11 @@ export class HttpUpstream implements MCPTransport {
 	}
 
 	/** Headers of a POST. `method` is undefined for a JSON-RPC response, which only the legacy binding sends. */
-	#postHeaders(method: string | undefined, params: Record<string, unknown>, extra?: Record<string, string>): Record<string, string> {
+	#postHeaders(
+		method: string | undefined,
+		params: Record<string, unknown>,
+		extra?: Record<string, string>,
+	): Record<string, string> {
 		const standard: Record<string, string> = {
 			"Content-Type": "application/json",
 			Accept: "application/json, text/event-stream",

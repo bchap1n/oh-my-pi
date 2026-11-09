@@ -935,7 +935,11 @@ async function probeStdio(upstream: StdioUpstream, deps: McpPeerDeps, signal: Ab
 			const era = eraOfDiscoverError(discovered.error);
 			if (era === "modern") {
 				const retried = await retryUnsupportedVersion(discovered.error, version =>
-					upstream.request("server/discover", { _meta: { ...requestMeta(), [MCPMeta.protocolVersion]: version } }, { signal }),
+					upstream.request(
+						"server/discover",
+						{ _meta: { ...requestMeta(), [MCPMeta.protocolVersion]: version } },
+						{ signal },
+					),
 				);
 				return { era: "modern", discover: retried };
 			}
@@ -981,7 +985,11 @@ async function probeHttp(spec: McpServerSpec, deps: McpPeerDeps, signal: AbortSi
 		const era = eraOfDiscoverError(error);
 		if (era === "modern") {
 			const retried = await retryUnsupportedVersion(error, version =>
-				modern.request("server/discover", { _meta: { ...requestMeta(), [MCPMeta.protocolVersion]: version } }, { signal }),
+				modern.request(
+					"server/discover",
+					{ _meta: { ...requestMeta(), [MCPMeta.protocolVersion]: version } },
+					{ signal },
+				),
 			);
 			return { era: "modern", discover: retried };
 		}
