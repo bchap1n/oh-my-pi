@@ -40,7 +40,7 @@ use napi::{
 };
 use napi_derive::napi;
 use parking_lot::Mutex;
-use pi_shell::{cancel as core_cancel, process as core_process};
+use pi_shell::{cancel as core_cancel, proctree as core_process};
 use serde::{Deserialize, Serialize};
 use tokio::{
 	io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, ReadBuf},
