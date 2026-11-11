@@ -1149,8 +1149,9 @@ class TreeList implements Component {
 					return [{ t: `[${toolMsg.toolName ?? "tool"}]`, s: "muted" }];
 				}
 				if (role === "bashExecution") {
-					const bashMsg = msg as { command?: string };
-					return [{ t: `[bash]: ${normalize(bashMsg.command ?? "")}`, s: "dim" }];
+					const bashMsg = msg as { command?: string; shell?: "bash" | "pwsh" };
+					const shell = bashMsg.shell === "pwsh" ? "pwsh" : "bash";
+					return [{ t: `[${shell}]: ${normalize(bashMsg.command ?? "")}`, s: "dim" }];
 				}
 				return [{ t: `[${role}]`, s: "dim" }];
 			}
