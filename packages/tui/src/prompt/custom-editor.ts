@@ -65,11 +65,11 @@ const ASK_PLACEHOLDER = "Answer above, or type here to skip the questions";
 /** Live composer state the TSP layout shows; the interactive host wires {@link CustomEditor.composerState}. */
 export interface ComposerNativeState {
 	/**
-	 * The draft runs as a shell command (`!`, `!!`), Python (`$`, `$$`) or a `/btw` side question (`?`);
-	 * `excluded` keeps it from the model. Role `omp.editor.<kind>`, except btw's `omp.editor.btw-ask`
-	 * (`omp.editor.btw` is the focused note's).
+	 * The draft runs as a shell command (`!`, `!!`), PowerShell (`%`, `%%`), Python (`$`, `$$`) or a
+	 * `/btw` side question (`?`); `excluded` keeps it from the model. Role `omp.editor.<kind>`, except
+	 * btw's `omp.editor.btw-ask` (`omp.editor.btw` is the focused note's).
 	 */
-	readonly shell?: { readonly kind: "bash" | "python" | "btw"; readonly excluded: boolean };
+	readonly shell?: { readonly kind: "bash" | "pwsh" | "python" | "btw"; readonly excluded: boolean };
 	/** Thinking effort word (`high`, `off`, `auto`); undefined when the model has no thinking. */
 	readonly thinking?: string;
 	/** The thinking level draws as the model chip's icon instead of its own chip (where the terminal has `effort`). */
@@ -1533,15 +1533,36 @@ export class CustomEditor extends Editor {
 		const runs =
 			shell.kind === "bash"
 				? "Runs in your shell"
-				: shell.kind === "python"
-					? "Runs in Python"
-					: "Asks a /btw side question";
+				: shell.kind === "pwsh"
+					? "Runs in PowerShell"
+					: shell.kind === "python"
+						? "Runs in Python"
+						: "Asks a /btw side question";
 		const mode = keyed(
 			row(
 				compact([
 					shell.excluded &&
 						node("icon", { name: "eye-off", title: "Not sent to the model" }, undefined, "excluded"),
-					node("text", { spans: [span(shell.kind, `${shell.kind}Mode`)], wrap: "none" }, undefined, "label"),
+					node(
+						"text",
+						{
+							spans: [
+								span(
+									shell.kind,
+									shell.kind === "bash"
+										? "bashMode"
+										: shell.kind === "pwsh"
+											? "bashMode"
+											: shell.kind === "python"
+												? "pythonMode"
+												: "btwMode",
+								),
+							],
+							wrap: "none",
+						},
+						undefined,
+						"label",
+					),
 				]),
 				{
 					role: "omp.composer.mode",
