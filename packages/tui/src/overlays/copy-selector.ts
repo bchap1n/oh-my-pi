@@ -83,7 +83,10 @@ function turnSummary(entry: TranscriptEntry): { label: string; role: string } {
 		case "toolResult":
 			return { label: `${message.toolName} result`, role: `omp.tool.${message.toolName}` };
 		case "bashExecution":
-			return { label: `$ ${firstLine(message.command)}`, role: "omp.tool.bash" };
+			return {
+				label: `${message.shell === "pwsh" ? "PS>" : "$"} ${firstLine(message.command)}`,
+				role: "omp.tool.bash",
+			};
 		case "pythonExecution":
 			return { label: firstLine(message.code), role: "omp.tool.eval" };
 		case "compactionSummary":
