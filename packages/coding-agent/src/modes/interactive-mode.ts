@@ -849,6 +849,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	pythonRun: ExecRun | undefined = undefined;
 	isPythonMode = false;
 	isBtwMode = false;
+	isPowerShellMode = false;
 	streaming: AssistantView | undefined = undefined;
 	streamingMessage: AssistantMessage | undefined = undefined;
 	lastAssistantUsage: Usage | undefined = undefined;
@@ -3930,7 +3931,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	updateEditorBorderColor(): void {
 		const accentEnabled = !isSettingsInitialized() || cfgStatusLineSessionAccent.get(settings) !== false;
 		const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
-		const inputMode = this.isBashMode ? "bash" : this.isPythonMode ? "python" : this.isBtwMode ? "btw" : undefined;
+		const inputMode = this.isBashMode ? "bash" : this.isPowerShellMode ? "powershell" : this.isPythonMode ? "python" : this.isBtwMode ? "btw" : undefined;
 		const color = composerBorderColor({
 			inputMode,
 			vimMode: this.composer.vimMode(),
@@ -3954,11 +3955,13 @@ export class InteractiveMode implements InteractiveModeContext {
 			running: this.#working.kind !== undefined || this.session.isStreaming,
 			...(this.isBashMode
 				? { shell: { kind: "bash", excluded: draft.startsWith("!!") } }
-				: this.isPythonMode
-					? { shell: { kind: "python", excluded: draft.startsWith("$$") } }
-					: this.isBtwMode
-						? { shell: { kind: "btw", excluded: false } }
-						: {}),
+				: this.isPowerShellMode
+					? { shell: { kind: "powershell", excluded: draft.startsWith("!!") } }
+					: this.isPythonMode
+						? { shell: { kind: "python", excluded: draft.startsWith("$$") } }
+						: this.isBtwMode
+							? { shell: { kind: "btw", excluded: false } }
+							: {}),
 			...(untrack(() => this.isBtwFocused) ? { btw: true } : {}),
 			...(viewing ? { viewing } : {}),
 			...(untrack(() => this.#extensionUiController.composerAsk()) === "skip" ? { skipsAsk: true } : {}),
@@ -8237,6 +8240,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void> {
 		return this.#commandController.handlePythonCommand(code, excludeFromContext);
+	}
+
+	handlePowerShellCommand(command: string, excludeFromContext?: boolean): Promise<void> {
+		return this.#commandController.handlePowerShellCommand(command, excludeFromContext);
 	}
 
 	async handleMCPCommand(text: string): Promise<void> {

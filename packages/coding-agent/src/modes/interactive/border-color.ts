@@ -11,7 +11,7 @@ import { sessionAccentHex } from "../../ui/status/accent";
 /** What the border's color reflects. */
 export interface BorderState {
 	/** A `!`, `$` or `/btw` draft. */
-	readonly inputMode: "bash" | "python" | "btw" | undefined;
+	readonly inputMode: "bash" | "powershell" | "python" | "btw" | undefined;
 	/** `null` when modal editing is off. */
 	readonly vimMode: VimMode | null;
 	/** Session title, when `statusLine.sessionAccent` is on. */
@@ -22,6 +22,7 @@ export interface BorderState {
 /** The theme color (key or hex) of the composer border in `state`. */
 export function composerBorderColor(state: BorderState): string {
 	if (state.inputMode === "bash") return "bashMode";
+	if (state.inputMode === "powershell") return "bashMode";
 	if (state.inputMode === "python") return "pythonMode";
 	if (state.inputMode === "btw") return "btwMode";
 	if (state.vimMode === "visual" || state.vimMode === "visual-line") return "warning";

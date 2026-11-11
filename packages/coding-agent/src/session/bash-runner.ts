@@ -160,9 +160,18 @@ export class BashRunner {
 	}
 
 	/** Records a bash result supplied outside executeBash in the current ownership scope. */
-	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void {
+	recordBashResult(
+		command: string,
+		result: BashResult,
+		options?: {
+			excludeFromContext?: boolean;
+			shell?: "bash" | "pwsh";
+			onRecorded?: (message: BashExecutionMessage) => void;
+		},
+	): void {
 		const target = this.#captureSessionTarget();
 		const message = this.#createMessage(command, result, options);
+		options?.onRecorded?.(message);
 		if (this.#host.isStreaming() && target === this.#sessionTarget) {
 			this.#pendingMessages.push({ target, message });
 			return;
@@ -312,7 +321,7 @@ export class BashRunner {
 	#createMessage(
 		command: string,
 		result: BashResult,
-		options?: { excludeFromContext?: boolean },
+		options?: { excludeFromContext?: boolean; shell?: "bash" | "pwsh" },
 	): BashExecutionMessage {
 		const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).minimized(result.minimized).get();
 		return {
@@ -326,6 +335,7 @@ export class BashRunner {
 			meta,
 			timestamp: Date.now(),
 			excludeFromContext: options?.excludeFromContext,
+			shell: options?.shell,
 		};
 	}
 

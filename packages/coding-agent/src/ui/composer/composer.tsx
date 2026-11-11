@@ -114,7 +114,7 @@ export interface ComposerState {
 	 * Natively a chip stands in for the sigil and the composer's role names the mode
 	 * (`omp.editor.<kind>`; btw's is `omp.editor.btw-ask`).
 	 */
-	readonly shell?: { readonly kind: "bash" | "python" | "btw"; readonly excluded?: boolean };
+	readonly shell?: { readonly kind: "bash" | "powershell" | "python" | "btw"; readonly excluded?: boolean };
 	/** Drafts go to the `/btw` note the user clicked, as its follow-ups: role `omp.editor.btw`, a `btw` chip that leads back to the chat. */
 	readonly btw?: boolean;
 	/**
@@ -2022,7 +2022,7 @@ export class Composer {
 		const termDecor = computed((): EditorTermRange[] => {
 			// A shell draft is code; a btw draft is prose like any other.
 			const kind = shell()?.kind;
-			if (kind === "bash" || kind === "python") return [];
+			if (kind === "bash" || kind === "python" || kind === "powershell") return [];
 			const text = this.#text();
 			const { ranges, extra } = decorations();
 			const out: EditorTermRange[] = ranges.map(({ from, to, atom }) => {

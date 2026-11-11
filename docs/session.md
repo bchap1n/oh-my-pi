@@ -184,7 +184,7 @@ roles under `type: "message"`:
 | `developer`              | pi-ai         | Developer-role instruction turn.                                                  |
 | `assistant`              | pi-ai         | Model turn; tool calls live in its `content` as `{ "type": "toolCall" }` blocks.  |
 | `toolResult`             | pi-ai         | Result of one tool call — **not** `tool_result`. Carries `toolCallId`/`toolName`. |
-| `bashExecution`          | coding-agent  | Standalone `!`-bash run.                                                          |
+| `bashExecution`          | coding-agent  | Standalone `!`-bash or `%`-PowerShell run; `shell` picks the `$`/`PS>` header.      |
 | `pythonExecution`        | coding-agent  | Standalone Python run.                                                            |
 | `hookMessage`            | coding-agent  | Legacy hook-injected message, retained for migration; new code uses `custom`.     |
 | `fileMention`            | coding-agent  | Inlined `@file` mention contents.                                                 |
