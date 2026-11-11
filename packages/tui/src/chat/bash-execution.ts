@@ -92,6 +92,7 @@ export class BashExecutionComponent extends Container {
 	readonly #instanceId = nextBashExecutionId++;
 	readonly #command: string;
 	readonly #sigil: string;
+	readonly #shell: "bash" | "pwsh";
 	readonly #colorKey: ExecutionColorKey;
 	readonly #startedAt = performance.now();
 	#endedAt: number | undefined;
@@ -103,6 +104,7 @@ export class BashExecutionComponent extends Container {
 	constructor(command: string, ui: TUI, excludeFromContext = false, shell: "bash" | "pwsh" = "bash") {
 		super();
 		this.#command = command;
+		this.#shell = shell;
 		this.#sigil = shell === "pwsh" ? "PS>" : "$";
 		this.#ui = ui;
 
@@ -212,9 +214,9 @@ export class BashExecutionComponent extends Container {
 				? describeExecutionTool({
 						...common,
 						name: "bash",
-						title: "Bash",
+						title: this.#shell === "pwsh" ? "PowerShell" : "Bash",
 						command: this.#command,
-						lang: "bash",
+						lang: this.#shell === "pwsh" ? "powershell" : "bash",
 						excluded: this.#colorKey === "dim",
 						endedAt: this.#endedAt,
 					})

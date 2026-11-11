@@ -426,15 +426,16 @@ function blockHead(block: WrappedTranscriptBlock): BlockHead {
 	const { message } = block;
 	if (message.role !== "custom") {
 		const bash = message.role === "bashExecution";
+		const pwsh = message.role === "bashExecution" && message.shell === "pwsh";
 		const source = plainLine((bash ? message.command : message.code).split("\n", 1)[0] ?? "");
 		const color = message.excludeFromContext ? "dim" : bash ? "bashMode" : "pythonMode";
-		let terminal = theme.fg(color, theme.bold(`${bash ? "$" : ">>>"} ${source}`));
+		let terminal = theme.fg(color, theme.bold(`${pwsh ? "PS>" : bash ? "$" : ">>>"} ${source}`));
 		if (message.cancelled) terminal += theme.fg("muted", " cancelled");
 		else if (message.exitCode !== undefined && message.exitCode !== 0) {
 			terminal += theme.fg("error", ` exit ${message.exitCode}`);
 		}
 		return bash
-			? { terminal, name: "bash", role: "omp.bash", title: "Bash", target: source }
+			? { terminal, name: "bash", role: "omp.bash", title: pwsh ? "PowerShell" : "Bash", target: source }
 			: { terminal, name: "eval", role: "omp.eval", title: "Python", target: source };
 	}
 	switch (message.customType) {
