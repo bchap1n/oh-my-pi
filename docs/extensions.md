@@ -1208,7 +1208,7 @@ entry carries an `AgentMessage` under `entry.message`, whose `role` discriminant
 | `developer`                    | Developer-role instruction turn.                                           |
 | `assistant`                    | Model turn. Tool calls are `{ type: "toolCall" }` blocks inside `content`. |
 | `toolResult`                   | One tool's result — **not** `tool_result`. Has `toolCallId` / `toolName`.  |
-| `bashExecution`                | Standalone `!`-bash run.                                                   |
+| `bashExecution`                | Standalone `!`-bash or `%`-PowerShell run; `shell` is `"bash"` or `"pwsh"`. |
 | `pythonExecution`              | Standalone python run.                                                     |
 | `hookMessage`                  | Legacy hook-injected message (migration only; use `custom`).               |
 | `fileMention`                  | Inlined `@file` mention contents.                                          |

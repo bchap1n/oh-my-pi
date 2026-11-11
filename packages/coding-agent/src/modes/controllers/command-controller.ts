@@ -2087,6 +2087,55 @@ export class CommandController {
 		this.ctx.ui.requestRender();
 	}
 
+	async handlePowerShellCommand(command: string, excludeFromContext = false): Promise<void> {
+		const isDeferred = this.ctx.session.isStreaming;
+		const component = new BashExecutionComponent(command, this.ctx.ui, excludeFromContext, "pwsh");
+		this.ctx.bashComponent = component;
+		// Provisional until the session records the run.
+		const block = new PresentedBlock(
+			component,
+			messageBlock({
+				role: "bashExecution",
+				command,
+				output: "",
+				exitCode: undefined,
+				cancelled: false,
+				truncated: false,
+				timestamp: Date.now(),
+				excludeFromContext,
+				shell: "pwsh",
+			}),
+		);
+		block.setExpanded(this.ctx.toolOutputExpanded);
+
+		if (isDeferred) {
+			this.ctx.pendingShellContainer.addChild(block);
+			this.ctx.pendingBashComponents.push(block);
+		} else {
+			this.ctx.present(block);
+		}
+		this.ctx.ui.requestRender();
+
+		try {
+			const result = await this.ctx.session.executePowerShell(command, undefined, {
+				excludeFromContext,
+				onRecorded: message => block.setBlock(messageBlock(message)),
+			});
+			const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
+			this.ctx.bashComponent?.setComplete(result.exitCode, result.cancelled, {
+				output: result.output,
+				truncation: meta?.truncation,
+				artifactError: meta?.artifactError,
+			});
+		} catch (error) {
+			this.ctx.bashComponent?.setComplete(undefined, false);
+			this.ctx.showError(`PowerShell execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+		}
+
+		this.ctx.bashComponent = undefined;
+		this.ctx.ui.requestRender();
+	}
+
 	async handleCompactCommand(
 		customInstructions?: string,
 		mode?: CompactMode,

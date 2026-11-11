@@ -56,8 +56,8 @@ const NATIVE_COMPOSER_PLACEHOLDER = "What are we cooking?";
 
 /** Live composer state the TSP layout shows; the interactive host wires {@link CustomEditor.composerState}. */
 export interface ComposerNativeState {
-	/** The draft runs as a shell command (`!`, `!!`) or Python (`$`, `$$`); `excluded` keeps it from the model. */
-	readonly shell?: { readonly kind: "bash" | "python"; readonly excluded: boolean };
+	/** The draft runs as a shell command (`!`, `!!`), PowerShell (`%`, `%%`) or Python (`$`, `$$`); `excluded` keeps it from the model. */
+	readonly shell?: { readonly kind: "bash" | "pwsh" | "python"; readonly excluded: boolean };
 	/** Thinking effort word (`high`, `off`, `auto`); undefined when the model has no thinking. */
 	readonly thinking?: string;
 	/** The thinking level draws as the model chip's icon instead of its own chip (where the terminal has `effort`). */
@@ -1386,7 +1386,8 @@ export class CustomEditor extends Editor {
 					"send",
 				);
 		if (!shell) return { focus, mode: undefined, model, effort, dictation, submit };
-		const runs = shell.kind === "bash" ? "Runs in your shell" : "Runs in Python";
+		const runs =
+			shell.kind === "bash" ? "Runs in your shell" : shell.kind === "pwsh" ? "Runs in PowerShell" : "Runs in Python";
 		const mode = keyed(
 			row(
 				compact([
@@ -1394,7 +1395,15 @@ export class CustomEditor extends Editor {
 						node("icon", { name: "eye-off", title: "Not sent to the model" }, undefined, "excluded"),
 					node(
 						"text",
-						{ spans: [span(shell.kind, shell.kind === "bash" ? "bashMode" : "pythonMode")], wrap: "none" },
+						{
+							spans: [
+								span(
+									shell.kind,
+									shell.kind === "bash" ? "bashMode" : shell.kind === "pwsh" ? "bashMode" : "pythonMode",
+								),
+							],
+							wrap: "none",
+						},
 						undefined,
 						"label",
 					),

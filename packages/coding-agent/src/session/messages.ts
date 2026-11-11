@@ -960,7 +960,8 @@ export function replaceLlmImagesWithText(messages: Message[], placeholder: strin
  * Convert a BashExecutionMessage to user message text for LLM context.
  */
 export function bashExecutionToText(msg: BashExecutionMessage): string {
-	let text = `Ran \`${msg.command}\`\n`;
+	let text =
+		msg.shell === "pwsh" ? `Ran PowerShell:\n\`\`\`powershell\n${msg.command}\n\`\`\`\n` : `Ran \`${msg.command}\`\n`;
 	if (msg.output) {
 		text += `\`\`\`\n${msg.output}\n\`\`\``;
 	} else {

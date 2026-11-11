@@ -248,6 +248,26 @@ function parsePythonCommandInput(text: string): { code: string; isExcluded: bool
 	};
 }
 
+/**
+ * Length of the `%`/`%%` PowerShell sigil, or 0 when the draft is not PowerShell. Like the
+ * `$` sigil, it counts only once whitespace follows, so prose such as `%d` stays prose.
+ */
+function powerShellCommandPrefixLength(trimmedText: string): 0 | 1 | 2 {
+	if (trimmedText.charCodeAt(0) !== 37 /* % */) return 0;
+	const prefixLength = trimmedText.charCodeAt(1) === 37 /* % */ ? 2 : 1;
+	const next = trimmedText.charCodeAt(prefixLength);
+	return next === 32 || next === 9 || next === 10 || next === 13 ? prefixLength : 0;
+}
+
+function parsePowerShellCommandInput(text: string): { code: string; isExcluded: boolean } | undefined {
+	const trimmed = text.trimStart();
+	const prefixLength = powerShellCommandPrefixLength(trimmed);
+	if (prefixLength === 0) return undefined;
+	const code = trimmed.slice(prefixLength).trim();
+	if (prefixLength === 1 && looksLikePastedShellPrompt(code)) return undefined;
+	return { code, isExcluded: prefixLength === 2 };
+}
+
 /** Wrap pasted text in `<attachment>` tags so the model treats it as one quoted block. */
 function wrapPasteInAttachmentBlock(content: string): string {
 	return `<attachment>\n${content}\n</attachment>`;
@@ -642,6 +662,8 @@ export class InputController {
 				this.ctx.editor.setText("");
 				this.ctx.isBashMode = false;
 				this.ctx.updateEditorBorderColor();
+			} else if (this.ctx.session.isPowerShellRunning) {
+				this.ctx.session.abortPowerShell();
 			} else if (this.ctx.session.isEvalRunning) {
 				this.ctx.session.abortEval();
 			} else if (this.ctx.isPythonMode) {
@@ -825,10 +847,16 @@ export class InputController {
 			if (wasComposing !== (text.trim() !== "")) this.ctx.syncIdleMaintenanceView();
 			const wasBashMode = this.ctx.isBashMode;
 			const wasPythonMode = this.ctx.isPythonMode;
+			const wasPowerShellMode = this.ctx.isPowerShellMode;
 			const trimmed = text.trimStart();
 			this.ctx.isBashMode = trimmed.startsWith("!");
 			this.ctx.isPythonMode = parsePythonCommandInput(trimmed) !== undefined;
-			if (wasBashMode !== this.ctx.isBashMode || wasPythonMode !== this.ctx.isPythonMode) {
+			this.ctx.isPowerShellMode = parsePowerShellCommandInput(trimmed) !== undefined;
+			if (
+				wasBashMode !== this.ctx.isBashMode ||
+				wasPythonMode !== this.ctx.isPythonMode ||
+				wasPowerShellMode !== this.ctx.isPowerShellMode
+			) {
 				this.ctx.updateEditorBorderColor();
 			}
 			// Editor input repaints through the scoped fast path (only the editor
@@ -1256,7 +1284,7 @@ export class InputController {
 					this.ctx.editor.setText("");
 					return;
 				}
-				if (text.startsWith("!") || parsePythonCommandInput(text)) {
+				if (text.startsWith("!") || parsePythonCommandInput(text) || parsePowerShellCommandInput(text)) {
 					this.ctx.showStatus("Local execution is host-only during a collab session");
 					this.ctx.editor.setText("");
 					return;
@@ -1348,6 +1376,19 @@ export class InputController {
 					this.ctx.editor.addToHistory(text);
 					await this.ctx.handlePythonCommand(code, isExcluded);
 					this.ctx.isPythonMode = false;
+					this.ctx.updateEditorBorderColor();
+					return;
+				}
+			}
+
+			// Handle PowerShell command (`% <command>` for normal, `%% <command>` for excluded from context).
+			const powerShellCommand = parsePowerShellCommandInput(text);
+			if (powerShellCommand) {
+				const { code, isExcluded } = powerShellCommand;
+				if (code) {
+					this.ctx.editor.addToHistory(text);
+					await this.ctx.handlePowerShellCommand(code, isExcluded);
+					this.ctx.isPowerShellMode = false;
 					this.ctx.updateEditorBorderColor();
 					return;
 				}
@@ -1687,7 +1728,13 @@ export class InputController {
 		) {
 			return;
 		}
-		if (text && (text.startsWith("/") || text.startsWith("!") || parsePythonCommandInput(text))) {
+		if (
+			text &&
+			(text.startsWith("/") ||
+				text.startsWith("!") ||
+				parsePythonCommandInput(text) ||
+				parsePowerShellCommandInput(text))
+		) {
 			this.ctx.showStatus(
 				`Only ${FOCUSED_VIEW_COMMAND_LIST} run here; other commands run in the main session — press ${formatDoubleTap("left")} to return first`,
 			);

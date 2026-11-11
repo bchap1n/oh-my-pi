@@ -91,6 +91,7 @@ export class BashExecutionComponent extends Container {
 	#showImages = true;
 	readonly #instanceId = nextBashExecutionId++;
 	readonly #command: string;
+	readonly #sigil: string;
 	readonly #colorKey: ExecutionColorKey;
 	readonly #startedAt = performance.now();
 	#endedAt: number | undefined;
@@ -99,9 +100,10 @@ export class BashExecutionComponent extends Container {
 	readonly #native = new Memo();
 	readonly #nativeImages = new NativeImageCache();
 
-	constructor(command: string, ui: TUI, excludeFromContext = false) {
+	constructor(command: string, ui: TUI, excludeFromContext = false, shell: "bash" | "pwsh" = "bash") {
 		super();
 		this.#command = command;
+		this.#sigil = shell === "pwsh" ? "PS>" : "$";
 		this.#ui = ui;
 
 		// Use dim border for excluded-from-context commands (!! prefix)
@@ -124,7 +126,7 @@ export class BashExecutionComponent extends Container {
 		});
 
 		// Command header
-		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`$ ${command}`)), 1, 0);
+		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`${this.#sigil} ${command}`)), 1, 0);
 		this.#contentContainer.addChild(this.#headerText);
 	}
 
@@ -218,7 +220,7 @@ export class BashExecutionComponent extends Container {
 					})
 				: describeExecutionCard({
 						...common,
-						head: [span(`$ ${this.#command}`, `${this.#colorKey} strong`)],
+						head: [span(`${this.#sigil} ${this.#command}`, `${this.#colorKey} strong`)],
 						muted: this.#colorKey === "dim",
 					});
 		});

@@ -362,7 +362,12 @@ export class ChatTranscriptBuilder {
 				break;
 			}
 			case "bashExecution": {
-				const component = new BashExecutionComponent(message.command, this.#deps.ui, message.excludeFromContext);
+				const component = new BashExecutionComponent(
+					message.command,
+					this.#deps.ui,
+					message.excludeFromContext,
+					message.shell ?? "bash",
+				);
 				if (message.output) component.appendOutput(message.output);
 				component.setComplete(message.exitCode, message.cancelled, {
 					truncation: message.meta?.truncation,

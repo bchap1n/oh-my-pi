@@ -189,7 +189,7 @@ export function normalizeCustomMessagePayload<T = unknown>(
 }
 
 /**
- * Message type for bash executions via the ! command.
+ * Message type for shell executions started from the prompt (`!`, `!!`, `%`, `%%`).
  */
 export interface BashExecutionMessage {
 	role: "bashExecution";
@@ -198,11 +198,13 @@ export interface BashExecutionMessage {
 	exitCode: number | undefined;
 	cancelled: boolean;
 	truncated: boolean;
+	/** Shell that ran the command; absent or `bash` means the system bash shell. */
+	shell?: "bash" | "pwsh";
 	/** Images extracted from terminal graphics in the command's stdout. */
 	images?: ImageContent[];
 	meta?: OutputMeta;
 	timestamp: number;
-	/** If true, this message is excluded from LLM context (!! prefix) */
+	/** If true, this message is excluded from LLM context (!! or %% prefix) */
 	excludeFromContext?: boolean;
 }
 
