@@ -447,6 +447,45 @@ describe("native transcript", () => {
 		}
 	});
 
+	it("labels a PowerShell run as PowerShell and PS>, not Bash", () => {
+		const ui = { requestRender: () => {}, requestComponentRender: () => {}, resetDisplay: () => {} } as never;
+		const frameTitle = (shell: "bash" | "pwsh"): string | undefined => {
+			const component = new BashExecutionComponent("get-location", ui, false, shell);
+			const titles: string[] = [];
+			const walk = (node: { k?: string; p?: { title?: string }; c?: unknown[] }): void => {
+				if (node.k === "tool" && node.p?.title) titles.push(node.p.title);
+				for (const child of (node.c ?? []) as (typeof node)[]) walk(child);
+			};
+			const cx = { cols: 100, reduceMotion: false, dark: true, supports: () => true, feature: () => false };
+			walk(component.describe(cx) as never);
+			return titles[0];
+		};
+		expect([frameTitle("bash"), frameTitle("pwsh")]).toEqual(["Bash", "PowerShell"]);
+
+		const builder = new ChatTranscriptBuilder({ ui, cwd: "/tmp", requestRender: () => {} });
+		builder.append([
+			{
+				type: "message",
+				id: "pwsh1",
+				parentId: null,
+				timestamp: "2026-01-01T00:00:00Z",
+				message: {
+					role: "bashExecution",
+					command: "get-location",
+					output: "",
+					exitCode: 0,
+					cancelled: false,
+					truncated: false,
+					timestamp: 1,
+					shell: "pwsh",
+				},
+			},
+		]);
+		const rendered = Bun.stripANSI(builder.container.render(100).join("\n"));
+		expect(rendered).toContain("PS> get-location");
+		expect(rendered).not.toContain("$ get-location");
+	});
+
 	it("reports a message block whose presentation changed under rows it already drew", () => {
 		// Regression guard: a `!` run or message block in terminal scrollback (never drawn again)
 		// keeping its stale rows there after its data changed outside a refresh (a `!` run recorded).
