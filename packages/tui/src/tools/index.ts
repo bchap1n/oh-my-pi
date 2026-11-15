@@ -1,0 +1,1 @@
+{"path": "conflict://1", "content": "\tpowershell: powershellToolRenderer,\n"}
