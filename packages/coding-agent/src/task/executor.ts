@@ -97,7 +97,7 @@ import { ASYNC_RESULT_MESSAGE_TYPE } from "../session/async-job-delivery";
 import type { AuthStorage } from "../session/auth-storage";
 import { type CostCapRefusal, CostCapError, type CostGateApi } from "../session/cost-gate";
 import { INTERRUPTED_TURN_ERROR } from "../session/exit-diagnostics";
-import { SKILL_PROMPT_MESSAGE_TYPE } from "../session/messages";
+import { SKILL_PROMPT_MESSAGE_TYPE, usageContextTokens } from "../session/messages";
 import { hasConversationalHistory, SessionManager } from "../session/session-manager";
 import { truncateTail } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import {
@@ -135,7 +135,7 @@ import { resolveAgentPrewalkDefault } from "./prewalk";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
 import { subprocessToolRegistry } from "./subprocess-tool-registry";
-import { recordStepsSent, type StepProgress } from "./steps";
+import { recordStepsSent, type StepProgress, type StepReportRoute, sendStepReport } from "./steps";
 import type { WorkPoolYieldItem } from "./workpool-yield";
 import {
 	type AgentDefinition,
@@ -181,6 +181,7 @@ import {
 	cfgDefaultThinkingLevel,
 } from "../session/settings";
 import { cfgDisabledProviders } from "../config/model-settings";
+import { cfgOffline } from "../config/auxiliary-model-policy";
 import { getRetryFallbackRole, installRetryFallbackRole } from "../session/retry-fallback-chains";
 import {
 	cfgCompactionModelThresholdsEnabled,
@@ -489,6 +490,8 @@ export interface ExecutorOptions {
 	 * if the resolved subagent model has no working credentials. See #985.
 	 */
 	parentActiveModelPattern?: string;
+	/** Active parent provider, independent of whether parent-model auth fallback is allowed. */
+	parentActiveProvider?: string;
 	/** Set for a per-call `model`; every model the child sends to must stay approved by these grants. */
 	perCallModelGrants?: PerCallModelGrants;
 	thinkingLevel?: ConfiguredThinkingLevel;
@@ -1313,6 +1316,8 @@ interface RunMonitorArgs {
 	modelRegistry?: ModelRegistry;
 	/** Parent settings for tiny-model label generation. */
 	settings?: Settings;
+	parentActiveModelPattern?: string;
+	parentActiveProvider?: string;
 	modelOverride?: string | string[];
 	/** Explicit pre-expansion model role alias selected for this run. */
 	modelRole?: string;
@@ -1766,7 +1771,15 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	// failures just leave the label unset.
 	const labelSource = assignment?.trim();
 	if (!args.description && args.modelRegistry && args.settings && labelSource) {
-		generateTaskLabel(labelSource, args.modelRegistry, args.settings, id, abortSignal)
+		generateTaskLabel(
+			labelSource,
+			args.modelRegistry,
+			args.settings,
+			id,
+			abortSignal,
+			args.parentActiveModelPattern,
+			args.parentActiveProvider,
+		)
 			.then(label => {
 				if (!label || abortSignal.aborted || progress.description) return;
 				progress.description = label;
@@ -2252,11 +2265,15 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					// Accumulate tokens for progress display
 					progress.tokens += getUsageTokens(messageUsage);
 					// Track latest per-turn context size so the UI can show
-					// "current context", not just cumulative billing volume.
+					// "current context", not just cumulative billing volume. A
+					// segmented provider response bills every continuation request,
+					// so `totalTokens` overshoots the occupied window; the reported
+					// `contextTokens` (or billable total minus orchestration) is the
+					// same accounting the session's own context estimate uses.
 					if (role === "assistant") {
-						const perTurnTotal = getNumberField(messageUsage, "totalTokens");
-						if (perTurnTotal !== undefined && perTurnTotal > 0) {
-							progress.contextTokens = perTurnTotal;
+						const occupied = usageContextTokens(messageUsage);
+						if (occupied > 0) {
+							progress.contextTokens = occupied;
 						}
 					}
 				}
@@ -2522,6 +2539,24 @@ function resultDelivered(outcome: DriveOutcome, monitor: SubagentRunMonitor, str
 	return outcome.exitCode === 0 && !outcome.aborted && monitor.lastReportTurnText() !== undefined;
 }
 
+/** Every `yield` the run recorded, in call order. */
+function recordedYields(progress: AgentProgress): YieldItem[] {
+	return (progress.extractedToolData?.yield ?? []) as YieldItem[];
+}
+
+/**
+ * What the child delivered for a step: its yields from `firstYield` on, folded
+ * like a run's result, or without `yield` its final message. Undefined when it
+ * delivered no data.
+ */
+function stepReport(monitor: SubagentRunMonitor, structured: boolean, firstYield: number): string | undefined {
+	const lastTurn = monitor.lastReportTurnText();
+	if (!structured) return lastTurn;
+	const assembled = assembleYieldResult(recordedYields(monitor.progress).slice(firstYield), lastTurn);
+	if (!assembled || assembled.missingData) return undefined;
+	return typeof assembled.data === "string" ? assembled.data : JSON.stringify(assembled.data, null, 2);
+}
+
 const MAX_YIELD_RETRIES = 3;
 const MAX_PROMPT_DISPATCH_ATTEMPTS = 4;
 const PROMPT_DISPATCH_IDLE_TIMEOUT_MS = 5_000;
@@ -2567,9 +2602,11 @@ async function driveSessionToResult(
 		 * them); each later one is sent once the previous one was delivered.
 		 */
 		steps?: StepProgress;
+		/** Where what each prompt before the last delivered goes; unset, the reports go nowhere. */
+		stepReports?: StepReportRoute;
 	} = {},
 ): Promise<DriveOutcome> {
-	const { solutionSpace, onPromptBusy, restore, steps } = options;
+	const { solutionSpace, onPromptBusy, restore, steps, stepReports } = options;
 	const structured = options.structured !== false;
 	const abortSignal = monitor.abortSignal;
 	let exitCode = 0;
@@ -2668,6 +2705,8 @@ async function driveSessionToResult(
 		}
 	};
 
+	// Yields before this index belong to earlier steps (or an earlier turn).
+	let stepYieldStart = recordedYields(monitor.progress).length;
 	try {
 		if (steps && !restore) recordStepsSent(session.sessionManager, steps.sent, steps.prompts);
 		monitor.holdForSteps(steps !== undefined && steps.sent < steps.prompts.length);
@@ -2854,6 +2893,11 @@ async function driveSessionToResult(
 				? monitor.yieldCalled()
 				: session.getLastAssistantMessage()?.stopReason === "stop";
 			if (!delivered || abortSignal.aborted || monitor.budgetStopRequested()) break;
+			if (stepReports) {
+				const report = stepReport(monitor, structured, stepYieldStart);
+				if (report?.trim()) await awaitAbortable(sendStepReport(stepReports, report));
+			}
+			stepYieldStart = recordedYields(monitor.progress).length;
 			monitor.holdForSteps(next + 1 < steps.prompts.length);
 			monitor.beginStep();
 			resetYieldTurnState(session.getToolByName("yield"));
@@ -3002,7 +3046,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 	// the narration of earlier turns.
 	const structured = args.structured !== false;
 	let rawOutput = structured ? monitor.rawOutput() : (monitor.lastReportTurnText() ?? "");
-	const yieldItems = progress.extractedToolData?.yield as YieldItem[] | undefined;
+	const yieldItems = recordedYields(progress);
 	// Breadcrumb the synchronous yield-payload shaping (O(rawOutput)) so a block
 	// here is attributed to this subagent rather than logged as "unknown".
 	pushLoopPhase(`subagent:${id}`);
@@ -3038,7 +3082,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 	) {
 		rawOutput = `[cancelled after ${progress.requests} req, ${progress.tokens} tok — last activity: "${formatSalvageSnippet(salvageText)}"]`;
 	}
-	const lastYield = yieldItems?.[yieldItems.length - 1];
+	const lastYield = yieldItems.at(-1);
 	const yieldAbortReason = lastYield?.status === "aborted" ? lastYield.error || "Subagent aborted task" : undefined;
 	const { abortedViaYield, hasYield } = finalized;
 	const { content: truncatedOutput, truncated } = truncateTail(rawOutput, {
@@ -4064,12 +4108,14 @@ async function driveFollowUpTurn(
 	// As in a first run: this turn's monitor would take a wake turn's answer
 	// (or its `yield`) as this turn's result, so non-parent wakes wait for it.
 	const releaseIrcWakes = session.holdIrcWakes();
+	const parentId = AgentRegistry.global().get(id)?.parentId;
 	try {
 		try {
 			outcome = await driveSessionToResult(session, monitor, message, {
 				structured,
 				restore: options.restore,
 				steps: options.steps,
+				stepReports: parentId ? { from: id, to: parentId } : undefined,
 				onPromptBusy: async () => {
 					attemptUnsubscribe();
 					logger.debug("Subagent follow-up lost the prompt race to an IRC wake; backing off", { id });
@@ -4687,6 +4733,8 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 		description: options.description,
 		modelRegistry: options.modelRegistry,
 		settings,
+		parentActiveModelPattern: options.parentActiveModelPattern,
+		parentActiveProvider: options.parentActiveProvider,
 		modelOverride,
 		modelRole,
 		modelRoute: options.modelRoute,
@@ -4804,6 +4852,13 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 			if (options.perCallModelGrants) {
 				await awaitAbortable(modelRegistry.awaitBackgroundRefresh());
 			}
+			const allowedProvider = cfgOffline.get(settings)
+				? (options.parentActiveProvider ??
+					(options.parentActiveModelPattern
+						? resolveModelOverride([options.parentActiveModelPattern], modelRegistry, settings).model?.provider
+						: undefined) ??
+					null)
+				: undefined;
 			const configuredModelPatterns = resolveConfiguredModelPatterns(modelPatterns, settings);
 			const inheritedRetryFallbackChain =
 				configuredModelPatterns.length === 1
@@ -4826,9 +4881,12 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 					modelRegistry,
 					settings,
 					id,
-					options.perCallModelGrants ? { exactOnly: true } : undefined,
+					{ exactOnly: !!options.perCallModelGrants, allowedProvider },
 				),
 			);
+			if (cfgOffline.get(settings) && !model) {
+				throw new Error("Offline mode: no subagent model is available on the active parent provider.");
+			}
 			if (options.perCallModelGrants && !model) {
 				throw new PerCallModelError(
 					`Requested exact model ${JSON.stringify(modelPatterns)} is unavailable. Use an exact provider/model[:level] selector; do not substitute another model.`,
@@ -4871,8 +4929,16 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 			const retryFallbackRole = installSubagentRetryFallbackChain({
 				settings: subagentSettings,
 				id,
-				candidates: resolveSubagentRetryFallbackCandidates(modelPatterns, modelRegistry, subagentSettings),
-				inheritedFallbackChain: inheritedRetryFallbackChain,
+				candidates: resolveSubagentRetryFallbackCandidates(modelPatterns, modelRegistry, subagentSettings).filter(
+					candidate => allowedProvider === undefined || candidate.model.provider === allowedProvider,
+				),
+				inheritedFallbackChain:
+					allowedProvider === undefined
+						? inheritedRetryFallbackChain
+						: inheritedRetryFallbackChain?.filter(entry => {
+								const candidate = resolveModelOverride([entry], modelRegistry, subagentSettings).model;
+								return candidate?.provider === allowedProvider;
+							}),
 				model,
 				authFallbackUsed,
 			});
@@ -5044,14 +5110,19 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 					modelPatternDefaultFallbackChain:
 						model || modelOverride === undefined ? undefined : inheritedRetryFallbackChain,
 					thinkingLevel: effectiveThinkingLevel,
-					...(perCallModelGrants
+					...(perCallModelGrants || allowedProvider !== undefined
 						? {
-								// Every request stays on an approved model that can run at or below the spawn's effort ceiling.
 								assertDispatchModel: (dispatchModel: Model) => {
-									assertPerCallModelApproved(dispatchModel, perCallModelGrants, modelRegistry);
-									if (spawnEffortCeiling) assertModelSupportsEffortCeiling(dispatchModel, spawnEffortCeiling);
+									if (allowedProvider !== undefined && dispatchModel.provider !== allowedProvider) {
+										throw new Error("Offline mode: subagent dispatch must use the active parent provider.");
+									}
+									if (perCallModelGrants) {
+										assertPerCallModelApproved(dispatchModel, perCallModelGrants, modelRegistry);
+										if (spawnEffortCeiling)
+											assertModelSupportsEffortCeiling(dispatchModel, spawnEffortCeiling);
+									}
 								},
-								disableModelFallback: true,
+								...(perCallModelGrants ? { disableModelFallback: true } : {}),
 								disableServerSideFallback: true,
 							}
 						: {}),
@@ -5371,6 +5442,7 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 				solutionSpace: options.solutionSpace,
 				structured,
 				steps: options.steps?.length ? { prompts: options.steps, sent: 1 } : undefined,
+				stepReports: options.parentAgentId ? { from: id, to: options.parentAgentId } : undefined,
 			});
 			// Acceptance boundary (#11079): the run's final result is settled, so
 			// stamp the lifecycle and terminalize a ref the run-state mirror left

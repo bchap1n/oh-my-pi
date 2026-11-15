@@ -72,6 +72,7 @@ import {
 	loadPuppeteerInWorker,
 	loadedKnownDevices,
 	loadedNetworkConditions,
+	privateTargetId,
 	puppeteerTimeoutError,
 	readPageViewport,
 } from "./launch";
@@ -133,6 +134,7 @@ import {
 	type NetworkRequestsOptions,
 	type NetworkRouteDescription,
 	type NetworkRouteOptions,
+	urlMatcher,
 } from "./network";
 import {
 	type BrowserCaptureResult,
@@ -221,7 +223,7 @@ import {
 	screenshotThreshold,
 	whileDrawing,
 } from "./screenshot";
-import { RuntimeDialogController, type DialogPolicy, type DialogState } from "./dialogs";
+import { type DialogPolicy, type DialogState, dialogBlocksPageError, RuntimeDialogController } from "./dialogs";
 import {
 	type BrowserFrameApi,
 	type BrowserFrameInfo,
@@ -235,6 +237,7 @@ import {
 	isNavigatedContextError,
 	type NavigationWaitUntil,
 	navigateMainFrame,
+	parseUrlPattern,
 	pushState,
 	reloadPage,
 	traverseHistory,
@@ -364,6 +367,14 @@ interface OpOptions {
 	selector?: string;
 	zeroMatchAfterMs?: number;
 	awaitNavigation?: boolean;
+	/**
+	 * How the call meets a confirm or prompt, which stops the page's script until it is answered. Either way a call
+	 * made while one is open fails at once. One that opens during the call: `"blocks"` fails the call (it can only end
+	 * once the dialog is answered); `"answers"` ends it as done (an input the page answered with the dialog).
+	 */
+	dialog?: "blocks" | "answers";
+	/** What the call saw when its deadline fired (e.g. the current URL), appended to the timeout error. */
+	timeoutNote?: () => string;
 }
 
 /** Queue a wheel event without treating a delayed renderer acknowledgement as dispatch failure. */
@@ -500,7 +511,7 @@ interface TabApi {
 		y: number,
 		opts?: {
 			button?: "left" | "right" | "middle" | "back" | "forward";
-			clickCount?: number;
+			count?: number;
 		},
 	): Promise<void>;
 	wheel(deltaX: number, deltaY: number): Promise<void>;
@@ -583,9 +594,15 @@ export type ActionableHandle = InteractionHandle & ElementQueryHelpers & { fill(
  * A named per-op guard: runs `fn` inside the active run's fail-fast deadline and
  * in-flight tracking (the same wrapper `tab.click(selector)` uses), so a stalled
  * handle action rejects with a named error before the cell budget instead of
- * hanging on puppeteer's protocol timeout.
+ * hanging on puppeteer's protocol timeout. `dialog` says how the action meets a
+ * confirm or prompt (`OpOptions.dialog`): a click or key press that opens one is
+ * done (`"answers"`); any other action fails (`"blocks"`, the default).
  */
-export type HandleOpGuard = <T>(label: string, fn: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+export type HandleOpGuard = <T>(
+	label: string,
+	fn: (signal: AbortSignal) => Promise<T>,
+	dialog?: "blocks" | "answers",
+) => Promise<T>;
 
 /**
  * Every `ElementHandle` method that dispatches input, pointer/touch, drag, or navigation
@@ -1046,9 +1063,9 @@ export function toActionableHandle(
 		enriched.click = options =>
 			clickElement(enriched, "handle.click()", undefined, {
 				button: options?.button,
-				clickCount: options?.count,
+				count: options?.count,
 			});
-		enriched.dblclick = () => clickElement(enriched, "handle.dblclick()", undefined, { clickCount: 2 });
+		enriched.dblclick = () => clickElement(enriched, "handle.dblclick()", undefined, { count: 2 });
 		enriched.check = () => setElementChecked(enriched, true, "handle.check()");
 		enriched.uncheck = () => setElementChecked(enriched, false, "handle.uncheck()");
 		enriched.select = (...values) => selectElementOptions(enriched, values, "handle.select()");
@@ -1084,15 +1101,18 @@ export function toActionableHandle(
 		const original = originals.interactive[method];
 		if (!original) continue;
 		methods[method] = (...args) =>
-			guard(`handle.${method}()`, signal =>
-				runGuardedHandleAction(
-					enriched,
-					originals,
-					`handle.${method}()`,
-					signal,
-					() => (method === "press" ? original(args[0], args[1], signal) : original(...args)),
-					invalidate,
-				),
+			guard(
+				`handle.${method}()`,
+				signal =>
+					runGuardedHandleAction(
+						enriched,
+						originals,
+						`handle.${method}()`,
+						signal,
+						() => (method === "press" ? original(args[0], args[1], signal) : original(...args)),
+						invalidate,
+					),
+				method === "press" || method === "tap" ? "answers" : "blocks",
 			);
 	}
 	enriched.type = (text, options) =>
@@ -1118,30 +1138,36 @@ export function toActionableHandle(
 			),
 		);
 	enriched.click = options =>
-		guard<void>("handle.click()", signal =>
-			runGuardedHandleAction(
-				enriched,
-				originals,
-				"handle.click()",
-				signal,
-				() =>
-					clickElement(enriched, "handle.click()", signal, {
-						button: options?.button,
-						clickCount: options?.count,
-					}),
-				invalidate,
-			),
+		guard<void>(
+			"handle.click()",
+			signal =>
+				runGuardedHandleAction(
+					enriched,
+					originals,
+					"handle.click()",
+					signal,
+					() =>
+						clickElement(enriched, "handle.click()", signal, {
+							button: options?.button,
+							count: options?.count,
+						}),
+					invalidate,
+				),
+			"answers",
 		);
 	enriched.dblclick = () =>
-		guard<void>("handle.dblclick()", signal =>
-			runGuardedHandleAction(
-				enriched,
-				originals,
-				"handle.dblclick()",
-				signal,
-				() => clickElement(enriched, "handle.dblclick()", signal, { clickCount: 2 }),
-				invalidate,
-			),
+		guard<void>(
+			"handle.dblclick()",
+			signal =>
+				runGuardedHandleAction(
+					enriched,
+					originals,
+					"handle.dblclick()",
+					signal,
+					() => clickElement(enriched, "handle.dblclick()", signal, { count: 2 }),
+					invalidate,
+				),
+			"answers",
 		);
 	enriched.hover = () =>
 		guard<void>("handle.hover()", signal =>
@@ -1501,11 +1527,6 @@ function replyError(payload: RunErrorPayload): Error {
 	if (payload.name) err.name = payload.name;
 	if (payload.stack) err.stack = payload.stack;
 	return err;
-}
-
-function privateTargetId(target: Target): string | undefined {
-	const raw = target as unknown as { _targetId?: unknown };
-	return typeof raw._targetId === "string" ? raw._targetId : undefined;
 }
 
 async function targetIdForTarget(target: Target): Promise<string> {
@@ -2588,10 +2609,13 @@ export class WorkerCore {
 			selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
 				? { selector, afterMs: opts.zeroMatchAfterMs }
 				: undefined;
-		// Fired when the watchdog wins the race (tears down the in-flight action) and in
+		// Fired when the watchdog or a dialog wins the race (tears down the in-flight action) and in
 		// the finally (stops the watchdog's polling once the op settles either way).
 		const earlyAc = new AbortController();
+		const dialogs = opts?.dialog ? this.#dialogs : undefined;
 		try {
+			const openDialog = dialogs?.state();
+			if (openDialog?.open) throw dialogBlocksPageError(label, openDialog, "is open");
 			// A download this op starts before a pending `waitForDownload()` has enabled
 			// tracking would bypass it, so hold the op until tracking applies — within
 			// the op's own deadline, so a stalled enable surfaces as this op's timeout.
@@ -2602,12 +2626,21 @@ export class WorkerCore {
 					arming.catch(() => undefined),
 				);
 			if (opts?.awaitNavigation) await this.#awaitRequestedNavigation(opSignal, perOpTimeoutMs);
-			if (!watchdog) return await fn(opSignal);
+			if (!watchdog && !dialogs) return await fn(opSignal);
 			const racedSignal = AbortSignal.any([opSignal, earlyAc.signal]);
-			return await Promise.race([
-				fn(racedSignal),
-				this.#zeroMatchWatchdog(watchdog.selector, label, watchdog.afterMs, racedSignal),
-			]);
+			const racers = [fn(racedSignal)];
+			if (watchdog) racers.push(this.#zeroMatchWatchdog(watchdog.selector, label, watchdog.afterMs, racedSignal));
+			if (dialogs) {
+				racers.push(
+					// The finally tears the call down once this settles the race.
+					dialogs.whenPending(racedSignal).then(state => {
+						if (opts?.dialog === "blocks") throw dialogBlocksPageError(label, state, "opened");
+						// An "answers" op is an input that resolves to nothing; the dialog is what it did.
+						return undefined as T;
+					}),
+				);
+			}
+			return await Promise.race(racers);
 		} catch (err) {
 			// Fail fast with a named, attributable error instead of the opaque whole-cell timeout:
 			// our per-op deadline fired, or puppeteer's own (equal) timeout fired first — having
@@ -2630,6 +2663,7 @@ export class WorkerCore {
 					hint = `; the element never became clickable (last check: ${refusal}${countNote ? `; ${countNote}` : ""})`;
 				else if (probe && "count" in probe) hint = formatSelectorMatchHint(probe.count);
 				else if (countNote) hint = `; ${countNote}`;
+				if (opts?.timeoutNote) hint += `; ${opts.timeoutNote()}`;
 				throw markBrowserRunRejection(
 					new ToolError(`${label} timed out after ${perOpTimeoutMs}ms${hint}`),
 					active.rejectionOwner,
@@ -2753,20 +2787,24 @@ export class WorkerCore {
 		// brings, not the one it leaves; `read` also reruns once when a navigation takes its context mid-call. Waits for
 		// events (navigation, response, download), dialogs and network setup run at once: they may be what the
 		// navigation waits on, or must catch its first request.
+		// Both run the page's script, which a confirm or prompt stops until it is answered (`OpOptions.dialog`).
 		const read = <T>(label: string, perOpMs: number, fn: (sig: AbortSignal) => Promise<T>): Promise<T> =>
-			op(label, perOpMs, sig => this.#rereadAfterNavigation(sig, perOpMs, () => fn(sig)), { awaitNavigation: true });
+			op(label, perOpMs, sig => this.#rereadAfterNavigation(sig, perOpMs, () => fn(sig)), {
+				awaitNavigation: true,
+				dialog: "blocks",
+			});
 		const act = <T>(
 			label: string,
 			perOpMs: number,
 			fn: (sig: AbortSignal) => Promise<T>,
 			selectorOpts?: OpOptions,
-		): Promise<T> => op(label, perOpMs, fn, { ...selectorOpts, awaitNavigation: true });
+		): Promise<T> => op(label, perOpMs, fn, { dialog: "blocks", ...selectorOpts, awaitNavigation: true });
 		// Hand user-facing handles the fail-fast per-op guard so their interactive
 		// methods (`.click()`, `.type()`, …) can't outrun the cell budget (issue #9535).
 		const enrich = (handle: ElementHandle): ActionableHandle =>
 			toActionableHandle(
 				handle,
-				(label, fn) => op(label, actionOpMs, fn),
+				(label, fn, dialog = "blocks") => op(label, actionOpMs, fn, { dialog }),
 				async () => {
 					// Raw Puppeteer actions have no AbortSignal. Poison + dispose every
 					// cached handle and stop navigation before reporting a recoverable timeout.
@@ -2869,7 +2907,7 @@ export class WorkerCore {
 					actionOpMs,
 					async sig => {
 						const label = `tab.click(${JSON.stringify(selector)})`;
-						const click = { button: opts?.button, clickCount: opts?.count };
+						const click = { button: opts?.button, count: opts?.count };
 						const resolved = normalizeSelector(selector);
 						if (resolved.startsWith("text/") && parseAriaRefSelector(selector) === null) {
 							await clickQueryHandlerText(page, resolved, label, actionOpMs, sig, click);
@@ -2879,7 +2917,7 @@ export class WorkerCore {
 							clickElement(handle, label, sig, click),
 						);
 					},
-					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
+					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS, dialog: "answers" },
 				),
 			type: (selector, text) =>
 				act(
@@ -2910,21 +2948,26 @@ export class WorkerCore {
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			press: (key, opts) =>
-				act(`tab.press(${JSON.stringify(key)})`, actionOpMs, async sig => {
-					assertTabPressArgs(key, opts);
-					const selector = opts?.selector;
-					if (selector) {
-						if (parseAriaRefSelector(selector) !== null) {
-							const handle = await this.#resolveAriaRef(selector);
-							try {
-								await untilAborted(sig, () => handle.focus());
-							} finally {
-								await handle.dispose().catch(() => undefined);
-							}
-						} else await untilAborted(sig, () => page.focus(normalizeSelector(selector)));
-					}
-					await pressKey(page, key, undefined, sig);
-				}),
+				act(
+					`tab.press(${JSON.stringify(key)})`,
+					actionOpMs,
+					async sig => {
+						assertTabPressArgs(key, opts);
+						const selector = opts?.selector;
+						if (selector) {
+							if (parseAriaRefSelector(selector) !== null) {
+								const handle = await this.#resolveAriaRef(selector);
+								try {
+									await untilAborted(sig, () => handle.focus());
+								} finally {
+									await handle.dispose().catch(() => undefined);
+								}
+							} else await untilAborted(sig, () => page.focus(normalizeSelector(selector)));
+						}
+						await pressKey(page, key, undefined, sig);
+					},
+					{ dialog: "answers" },
+				),
 			scroll: (deltaX, deltaY, opts) =>
 				act("tab.scroll()", actionOpMs, async sig => {
 					if (!opts?.selector) {
@@ -3065,8 +3108,11 @@ export class WorkerCore {
 				);
 			},
 			waitForUrl: (pattern, opts) => {
+				const resolved = parseUrlPattern(pattern);
 				const w = waitMs(opts?.timeout);
-				return act("tab.waitForUrl()", w, sig => this.#waitForUrl(pattern, w, sig));
+				return act("tab.waitForUrl()", w, sig => this.#waitForUrl(resolved, w, sig), {
+					timeoutNote: () => `the URL is ${page.url()}`,
+				});
 			},
 			waitForResponse: (pattern, opts) => {
 				const w = waitMs(opts?.timeout);
@@ -3074,7 +3120,9 @@ export class WorkerCore {
 			},
 			id: async id => enrich(await this.#resolveCachedHandle(id)),
 			ref: async id => enrich(await this.#resolveAriaRef(id)),
-			cookies: opts => act("tab.cookies()", quickOpMs, sig => readCookies(page, opts, sig)),
+			// The browser keeps cookies, so a dialog stopping the page's script does not stop this read.
+			cookies: opts =>
+				op("tab.cookies()", quickOpMs, sig => readCookies(page, opts, sig), { awaitNavigation: true }),
 			setCookies: (...cookies) => op("tab.setCookies()", actionOpMs, sig => setPageCookies(page, cookies, sig)),
 			clearCookies: opts => op("tab.clearCookies()", actionOpMs, sig => clearPageCookies(page, opts, sig)),
 			storage: (kind, opts) => act("tab.storage()", quickOpMs, sig => readStorage(page, kind, opts, sig)),
@@ -3332,10 +3380,10 @@ export class WorkerCore {
 					actionOpMs,
 					async sig => {
 						await this.#clickSelector(selector, actionOpMs, sig, handle =>
-							clickElement(handle, `tab.dblclick(${JSON.stringify(selector)})`, sig, { clickCount: 2 }),
+							clickElement(handle, `tab.dblclick(${JSON.stringify(selector)})`, sig, { count: 2 }),
 						);
 					},
-					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
+					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS, dialog: "answers" },
 				),
 			hover: selector =>
 				act(
@@ -3818,12 +3866,12 @@ export class WorkerCore {
 		signal: AbortSignal,
 	): Promise<HTTPResponse> {
 		const page = this.#requirePage();
-		const predicate: (response: HTTPResponse) => boolean | Promise<boolean> =
-			typeof pattern === "function"
-				? pattern
-				: pattern instanceof RegExp
-					? response => pattern.test(response.url())
-					: response => response.url().includes(pattern);
+		let predicate: (response: HTTPResponse) => boolean | Promise<boolean>;
+		if (typeof pattern === "function") predicate = pattern;
+		else {
+			const matches = urlMatcher(pattern);
+			predicate = response => matches(response.url());
+		}
 		return (await untilAborted(signal, () => page.waitForResponse(predicate, { timeout, signal }))) as HTTPResponse;
 	}
 
