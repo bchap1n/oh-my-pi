@@ -130,11 +130,20 @@ suite("PowerShellTool (persistent host)", () => {
 		expect(explicitPwsh.details?.pid).toBe(implicit.details?.pid);
 
 		// Requesting the "powershell" edition must resolve a DIFFERENT shellPath
-		// ("powershell.exe") rather than silently reusing the pwsh host. There is
-		// no real powershell.exe on this platform, so the spawn itself fails —
-		// which is the proof: if the edition→shellPath mapping were broken (e.g.
-		// always "pwsh"), this call would succeed instead.
-		await expect(tool.execute("e3", { command: "'unreachable'", edition: "powershell" })).rejects.toThrow();
+		// ("powershell.exe") rather than silently reusing the pwsh host. Where no
+		// Windows PowerShell binary exists the spawn itself fails, and that
+		// rejection is the proof: a broken edition→shellPath mapping (e.g. always
+		// "pwsh") would resolve here instead. On a Windows host, where
+		// powershell.exe is virtually always present, the proof is its own
+		// edition and pid instead.
+		const windowsAttempt = await tool.execute("e3", { command: "'unreachable'", edition: "powershell" }).then(
+			result => result,
+			() => undefined,
+		);
+		if (windowsAttempt) {
+			expect(windowsAttempt.details?.edition).toBe("powershell");
+			expect(windowsAttempt.details?.pid).not.toBe(implicit.details?.pid);
+		}
 
 		// The pwsh session host's state must be untouched by that failed attempt.
 		const stillPwsh = await tool.execute("e4", { command: "$edTag" });
