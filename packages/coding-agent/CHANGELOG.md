@@ -927,6 +927,10 @@
 - Fixed Tern and WebKit browser calls that incorrectly exposed unsupported page event-listener APIs; errors now identify the supported alternatives.
 - Fixed browser timeout and busy-page errors to include the current URL, affected tab, and actionable recovery guidance.
 - Fixed Mnemopi embedding failures being silently downgraded to keyword search; provider errors now produce a warning, including in print mode on stderr.
+- Fixed `read` line selectors on `xd://` docs (`xd://eval/browser:1-200`) failing with `Unknown topic`; `write` now rejects a selector on an `xd://` device URL instead of treating it as part of the device name
+### Added
+
+- The bash interceptor (`bashInterceptor.enabled`) redirects a bare `pwsh`/`powershell.exe` invocation to the `powershell` tool when it is available, so PowerShell runs in the persistent host with a correctly reset `$env:PSModulePath` instead of whatever bash's own environment carries
 
 ## [18.20.2] - 2026-11-14
 
