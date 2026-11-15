@@ -46,6 +46,9 @@
 - Fixed `page.on()` and other event-listener methods inside `tab.run` on Tern and WebKit tabs throwing `page.on is not a function`; they now name the backend and the helpers to use instead (`tab.requests()`, `tab.waitForResponse()`, `tab.console()`)
 
 - Fixed `read` line selectors on `xd://` docs (`xd://eval/browser:1-200`) failing with `Unknown topic`; `write` now rejects a selector on an `xd://` device URL instead of treating it as part of the device name
+### Added
+
+- The bash interceptor (`bashInterceptor.enabled`) redirects a bare `pwsh`/`powershell.exe` invocation to the `powershell` tool when it is available, so PowerShell runs in the persistent host with a correctly reset `$env:PSModulePath` instead of whatever bash's own environment carries
 
 ## [18.20.2] - 2026-11-14
 
