@@ -104,6 +104,7 @@
 
 - Fixed fallback model selection so roles are offered only models they can use, excluding incompatible image and speech models.
 - Fixed macOS spelling assistance, autocorrect, replacements, and word completion for shell (`!`) and Python (`$`) drafts.
+- The `powershell` tool's success-header icon now distinguishes which PowerShell edition ran the command: `pwsh` gets its own icon, Windows PowerShell (`powershell.exe`) gets a different one
 
 ## [18.20.1] - 2026-11-14
 
