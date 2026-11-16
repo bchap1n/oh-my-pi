@@ -882,11 +882,11 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 	const names = requestedTools?.filter(
 		name => (name in BUILTIN_TOOLS || name in HIDDEN_TOOLS) && isToolAllowed(name),
 	) ?? [
-			...Object.keys(BUILTIN_TOOLS).filter(isToolAllowed),
-			...(externalThinkingActive ? ["think"] : []),
-			...(includeYield ? ["yield"] : []),
-			...(goalModeActive ? ["goal"] : []),
-		];
+		...Object.keys(BUILTIN_TOOLS).filter(isToolAllowed),
+		...(externalThinkingActive ? ["think"] : []),
+		...(includeYield ? ["yield"] : []),
+		...(goalModeActive ? ["goal"] : []),
+	];
 	return { requestedTools, names, isAllowed: isToolAllowed };
 }
 
