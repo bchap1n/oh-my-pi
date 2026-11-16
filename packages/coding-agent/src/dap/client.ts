@@ -124,7 +124,7 @@ export class DapClient {
 			cwd,
 			stdin: "pipe",
 			env,
-			detached: true,
+			detached: adapter.detached,
 		});
 		const client = new DapClient(adapter, cwd, proc);
 		proc.exited.then(() => {
