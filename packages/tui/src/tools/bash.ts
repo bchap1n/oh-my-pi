@@ -565,14 +565,14 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						config.showHeader === false
 							? undefined
 							: renderStatusLine(
-								{
-									icon: options.spinnerFrame !== undefined ? "running" : "pending",
-									spinnerFrame: options.spinnerFrame,
-									title: config.resolveTitle(args, options),
-									titleColor: (config.resolveIdentity?.(args, undefined) ?? DEFAULT_SHELL_IDENTITY).color,
-								},
-								uiTheme,
-							);
+									{
+										icon: options.spinnerFrame !== undefined ? "running" : "pending",
+										spinnerFrame: options.spinnerFrame,
+										title: config.resolveTitle(args, options),
+										titleColor: (config.resolveIdentity?.(args, undefined) ?? DEFAULT_SHELL_IDENTITY).color,
+									},
+									uiTheme,
+								);
 					const elapsedMs = options.executionStarted ? options.elapsedMs : undefined;
 					return {
 						header,
@@ -611,19 +611,19 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 				config.showHeader === false
 					? undefined
 					: renderStatusLine(
-						success
-							? {
-								iconOverride: uiTheme.styledSymbol(identity.icon, identity.color),
-								title,
-								titleColor: identity.color,
-							}
-							: {
-								icon: isPartial ? "pending" : isTimeout ? "warning" : "error",
-								title,
-								titleColor: identity.color,
-							},
-						uiTheme,
-					);
+							success
+								? {
+										iconOverride: uiTheme.styledSymbol(identity.icon, identity.color),
+										title,
+										titleColor: identity.color,
+									}
+								: {
+										icon: isPartial ? "pending" : isTimeout ? "warning" : "error",
+										title,
+										titleColor: identity.color,
+									},
+							uiTheme,
+						);
 			// Per-instance cache for the expensive inner lines computation. Mirrors
 			// the eval-renderer pattern (`eval-render.ts:709-752`): without this,
 			// every TUI repaint (one per keystroke when a long transcript is on
@@ -808,22 +808,22 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						[
 							options.shell && options.shellPresentation
 								? node(
-									"shell",
-									{
-										role: SHELL_INPUT.role,
-										presentation: options.shellPresentation,
-										lang: "bash",
-										replayEpoch: options.shellReplayEpoch,
-										liveOrigin: options.executionStarted,
-										stream: options.argsComplete !== true && options.cancelled !== true,
-										preview: { lines: RUN_INPUT_PREVIEW_LINES },
-									},
-									undefined,
-									"input",
-								)
+										"shell",
+										{
+											role: SHELL_INPUT.role,
+											presentation: options.shellPresentation,
+											lang: "bash",
+											replayEpoch: options.shellReplayEpoch,
+											liveOrigin: options.executionStarted,
+											stream: options.argsComplete !== true && options.cancelled !== true,
+											preview: { lines: RUN_INPUT_PREVIEW_LINES },
+										},
+										undefined,
+										"input",
+									)
 								: runInput(command, SHELL_INPUT),
 							started &&
-							runFoot({ state: options.cancelled ? "cancelled" : "running", elapsedMs: options.elapsedMs }),
+								runFoot({ state: options.cancelled ? "cancelled" : "running", elapsedMs: options.elapsedMs }),
 						],
 						{ key: "run" },
 					),
@@ -885,19 +885,19 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 				[
 					presentation
 						? node(
-							"shell",
-							{
-								role: SHELL_INPUT.role,
-								presentation,
-								replayEpoch: options.shellReplayEpoch,
-								liveOrigin: options.executionStarted,
-								...(displayWorkdir ? { cwd: displayWorkdir } : {}),
-								lang: "bash",
-								preview: { lines: RUN_INPUT_PREVIEW_LINES },
-							},
-							undefined,
-							"input",
-						)
+								"shell",
+								{
+									role: SHELL_INPUT.role,
+									presentation,
+									replayEpoch: options.shellReplayEpoch,
+									liveOrigin: options.executionStarted,
+									...(displayWorkdir ? { cwd: displayWorkdir } : {}),
+									lang: "bash",
+									preview: { lines: RUN_INPUT_PREVIEW_LINES },
+								},
+								undefined,
+								"input",
+							)
 						: runInput(command, SHELL_INPUT),
 					shownOutput.trim().length > 0 && runOutput(shownOutput, { role: "omp.tool.bash.output", previewLines }),
 					runFoot({
