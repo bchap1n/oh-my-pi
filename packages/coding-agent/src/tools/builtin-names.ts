@@ -52,6 +52,7 @@ export const BUILTIN_TOOL_HELP: Record<BuiltinToolName, BuiltinToolHelp> = {
 	edit: { summary: "Edit files in place", defaultState: "on" },
 	write: { summary: "Create or overwrite files", defaultState: "on" },
 	bash: { summary: "Execute shell commands", defaultState: "on" },
+	powershell: { summary: "Execute PowerShell in a persistent session host", defaultState: "off" },
 	grep: { summary: "Search file contents by regex", defaultState: "on" },
 	glob: { summary: "Find files by glob pattern", defaultState: "on" },
 	find: {
