@@ -155,7 +155,7 @@ export class PowerShellTool implements AgentTool<typeof powershellSchema, PowerS
 		const width = cfgPowerShellOutputWidth.get(settings);
 
 		const tailBuffer = new TailBuffer(DEFAULT_MAX_BYTES);
-		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("powershell")) ?? {};
+		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.()) ?? {};
 		const sink = new OutputSink({
 			onChunk: streamTailUpdates(tailBuffer, onUpdate),
 			artifactPath,
