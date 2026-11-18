@@ -13,7 +13,6 @@ Don't trunc output by habit, result will be summarized and saved as an artifact.
 {{#if hasPowerShell}}
 PowerShell (pwsh or powershell.exe): NEVER run it from bash; use the `powershell` tool with `edition` (`"pwsh"` or `"powershell"`).
 {{/if}}
-{{/if}}
 {{#if hasLaunch}}
 Long-lived services:
 - unique name; ready requires name; no async/timeout; pty defaults true.
