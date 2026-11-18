@@ -39,8 +39,8 @@ use napi::{
 	threadsafe_function::{ThreadsafeFunction, UnknownReturnValue},
 };
 use napi_derive::napi;
-use parking_lot::Mutex;
 use omp_shell::{cancel as core_cancel, proctree as core_process};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::{
 	io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, ReadBuf},
