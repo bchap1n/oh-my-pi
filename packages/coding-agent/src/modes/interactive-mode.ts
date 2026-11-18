@@ -5101,7 +5101,7 @@ export class InteractiveMode implements InteractiveModeContext {
 						? { kind: "python", excluded: draft.startsWith("$$") }
 						: this.isBtwMode
 							? { kind: "btw", excluded: false }
-						: undefined,
+							: undefined,
 			thinking: thinkingLevelWord(this.viewSession),
 			thinkingInModel: cfgStatusLineCompactThinkingLevel.get(settings),
 			rate: this.#nativeTokenRate(),
