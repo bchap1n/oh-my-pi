@@ -104,6 +104,9 @@
 
 - Fixed fallback model selection so roles are offered only models they can use, excluding incompatible image and speech models.
 - Fixed macOS spelling assistance, autocorrect, replacements, and word completion for shell (`!`) and Python (`$`) drafts.
+- The `powershell` tool's success-header icon now distinguishes which PowerShell edition ran the command: `pwsh` gets its own icon, Windows PowerShell (`powershell.exe`) gets a different one
+- `powershell` tool cards name their edition, "PowerShell" (`pwsh`) or "Windows PowerShell" (`powershell.exe`), with a distinct icon, and paint the icon and title in that edition's logo color; themes can override them with the new optional `toolPowerShell` / `toolWindowsPowerShell` colors, which otherwise follow the logos in a shade readable on the theme's background
+- `powershell` tool cards name their edition, "PowerShell" (`pwsh`) or "Windows PowerShell" (`powershell.exe`), with a distinct icon, and paint the icon and title in that edition's logo color; themes can override them with the new optional `toolPowerShell` / `toolWindowsPowerShell` colors, which otherwise follow the logos in a shade readable on the theme's background ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
 
 ## [18.20.1] - 2026-11-14
 
@@ -175,6 +178,9 @@
 ### Removed
 
 - Removed `estimateSkillsTokens()` and the `skillful` context-usage option; Skills tokens come from the built prompt's sources ([#17971](https://github.com/can1357/oh-my-pi/pull/17971) by [@c-w-z](https://github.com/c-w-z))
+### Fixed
+
+- The PowerShell prompt sigil (`%`) now labels its runs `PowerShell` with a `PS>` prompt instead of `Bash` with `$`, in the live tool frame, the replayed transcript, the tree view and the copy picker
 
 ## [18.18.8] - 2026-11-11
 

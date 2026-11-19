@@ -91,6 +91,8 @@ export class BashExecutionComponent extends Container {
 	#showImages = true;
 	readonly #instanceId = nextBashExecutionId++;
 	readonly #command: string;
+	readonly #sigil: string;
+	readonly #shell: "bash" | "pwsh";
 	readonly #colorKey: ExecutionColorKey;
 	readonly #startedAt = performance.now();
 	#endedAt: number | undefined;
@@ -99,9 +101,11 @@ export class BashExecutionComponent extends Container {
 	readonly #native = new Memo();
 	readonly #nativeImages = new NativeImageCache();
 
-	constructor(command: string, ui: TUI, excludeFromContext = false) {
+	constructor(command: string, ui: TUI, excludeFromContext = false, shell: "bash" | "pwsh" = "bash") {
 		super();
 		this.#command = command;
+		this.#shell = shell;
+		this.#sigil = shell === "pwsh" ? "PS>" : "$";
 		this.#ui = ui;
 
 		// Use dim border for excluded-from-context commands (!! prefix)
@@ -124,7 +128,7 @@ export class BashExecutionComponent extends Container {
 		});
 
 		// Command header
-		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`$ ${command}`)), 1, 0);
+		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`${this.#sigil} ${command}`)), 1, 0);
 		this.#contentContainer.addChild(this.#headerText);
 	}
 
@@ -210,15 +214,15 @@ export class BashExecutionComponent extends Container {
 				? describeExecutionTool({
 						...common,
 						name: "bash",
-						title: "Bash",
+						title: this.#shell === "pwsh" ? "PowerShell" : "Bash",
 						command: this.#command,
-						lang: "bash",
+						lang: this.#shell === "pwsh" ? "powershell" : "bash",
 						excluded: this.#colorKey === "dim",
 						endedAt: this.#endedAt,
 					})
 				: describeExecutionCard({
 						...common,
-						head: [span(`$ ${this.#command}`, `${this.#colorKey} strong`)],
+						head: [span(`${this.#sigil} ${this.#command}`, `${this.#colorKey} strong`)],
 						muted: this.#colorKey === "dim",
 					});
 		});

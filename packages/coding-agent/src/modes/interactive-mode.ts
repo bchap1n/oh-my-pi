@@ -1551,6 +1551,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	pythonComponent: EvalExecutionComponent | undefined = undefined;
 	isPythonMode = false;
 	isBtwMode = false;
+	isPowerShellMode = false;
 	streamingComponent: AssistantMessageComponent | undefined = undefined;
 	streamingMessage: AssistantMessage | undefined = undefined;
 	lastAssistantUsage: Usage | undefined = undefined;
@@ -4991,6 +4992,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		const vimMode = this.editor.vimEnabled ? this.editor.vimMode : undefined;
 		if (this.isBashMode) {
 			this.editor.borderColor = theme.getBashModeBorderColor();
+		} else if (this.isPowerShellMode) {
+			this.editor.borderColor = theme.getBashModeBorderColor();
 		} else if (this.isPythonMode) {
 			this.editor.borderColor = theme.getPythonModeBorderColor();
 		} else if (this.isBtwMode) {
@@ -5092,11 +5095,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		return {
 			shell: this.isBashMode
 				? { kind: "bash", excluded: draft.startsWith("!!") }
-				: this.isPythonMode
-					? { kind: "python", excluded: draft.startsWith("$$") }
-					: this.isBtwMode
-						? { kind: "btw", excluded: false }
-						: undefined,
+				: this.isPowerShellMode
+					? { kind: "pwsh", excluded: draft.startsWith("%%") }
+					: this.isPythonMode
+						? { kind: "python", excluded: draft.startsWith("$$") }
+						: this.isBtwMode
+							? { kind: "btw", excluded: false }
+							: undefined,
 			thinking: thinkingLevelWord(this.viewSession),
 			thinkingInModel: cfgStatusLineCompactThinkingLevel.get(settings),
 			rate: this.#nativeTokenRate(),
@@ -9756,6 +9761,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void> {
 		return this.#commandController.handlePythonCommand(code, excludeFromContext);
+	}
+
+	handlePowerShellCommand(command: string, excludeFromContext?: boolean): Promise<void> {
+		return this.#commandController.handlePowerShellCommand(command, excludeFromContext);
 	}
 
 	async handleMCPCommand(text: string): Promise<void> {

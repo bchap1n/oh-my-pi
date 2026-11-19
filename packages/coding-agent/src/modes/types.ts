@@ -371,6 +371,8 @@ export interface InteractiveModeContext {
 	isPythonMode: boolean;
 	/** The draft starts with `?`, the `/btw` shortcut. */
 	isBtwMode: boolean;
+	/** The draft starts with `%` or `%%`, the PowerShell sigils. */
+	isPowerShellMode: boolean;
 	streamingComponent: AssistantMessageComponent | undefined;
 	streamingMessage: AssistantMessage | undefined;
 	/**
@@ -607,6 +609,7 @@ export interface InteractiveModeContext {
 	handleForkCommand(placement?: "pane" | "window"): Promise<void>;
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
 	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void>;
+	handlePowerShellCommand(command: string, excludeFromContext?: boolean): Promise<void>;
 	handleMCPCommand(text: string): Promise<void>;
 	handleSSHCommand(text: string): Promise<void>;
 	handleCompactCommand(
