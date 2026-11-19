@@ -43,6 +43,7 @@ function normalizeAdapterConfig(config: unknown): DapAdapterConfig | null {
 		launchDefaults: normalizeObject(config.launchDefaults),
 		attachDefaults: normalizeObject(config.attachDefaults),
 		acceptsDirectoryProgram: config.acceptsDirectoryProgram === true,
+		detached: config.detached === false ? false : undefined,
 		...(connectMode ? { connectMode } : {}),
 	};
 }
@@ -167,6 +168,7 @@ function resolveDefaultJsDebugAdapter(
 		attachDefaults: config.attachDefaults ?? {},
 		connectMode: "tcp",
 		acceptsDirectoryProgram: config.acceptsDirectoryProgram === true,
+		detached: config.detached !== false,
 	};
 }
 
@@ -201,6 +203,7 @@ function resolveAdapterFromConfig(
 		attachDefaults: config.attachDefaults ?? {},
 		connectMode: config.connectMode ?? "stdio",
 		acceptsDirectoryProgram: config.acceptsDirectoryProgram === true,
+		detached: config.detached !== false,
 	};
 }
 
@@ -468,12 +471,21 @@ export type LaunchProgramKind = "file" | "directory" | "missing";
  *  Currently scoped to dlv, where `mode` selects how the program path is
  *  interpreted: directories and `.go` source files debug as a Go package
  *  (`mode=debug`), anything else is treated as a compiled binary (`mode=exec`).
+ *
+ *  Also scoped to powershell (PSES): the PowerShell debug adapter only accepts
+ *  the target file via the `script` launch key — it has no `program` concept.
+ *  Without this mapping the debuggee runs to completion in a REPL-shaped
+ *  session before any breakpoint binds, so the tool reports "terminated"
+ *  instantly. Passing `script` makes PSES treat the file as the debug target.
  */
 export function resolveLaunchOverrides(
 	adapter: DapResolvedAdapter,
 	program: string,
 	programKind: LaunchProgramKind,
 ): Record<string, unknown> {
+	if (adapter.name === "powershell") {
+		return { script: program };
+	}
 	if (adapter.name === "dlv") {
 		const extension = path.extname(program).toLowerCase();
 		if (programKind === "directory" || extension === ".go") {

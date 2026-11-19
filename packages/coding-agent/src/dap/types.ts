@@ -495,6 +495,10 @@ export interface DapAdapterConfig {
 	 *  (e.g. dlv treats it as a Go package path). When false/undefined, the
 	 *  debug tool rejects directory programs upfront. */
 	acceptsDirectoryProgram?: boolean;
+	/** When false, the adapter process is NOT detached from the parent.
+	 *  Default is true. Set to false for adapters that fail with detached
+	 *  stdio pipes on Windows (e.g., PowerShell). */
+	detached?: boolean;
 }
 
 export interface DapResolvedAdapter {
@@ -509,6 +513,7 @@ export interface DapResolvedAdapter {
 	attachDefaults: DapAttachDefaults;
 	connectMode: "stdio" | "socket" | "tcp";
 	acceptsDirectoryProgram: boolean;
+	detached: boolean;
 }
 
 export interface DapBreakpointRecord {
