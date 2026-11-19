@@ -398,6 +398,7 @@ impl PtySession {
 
 	/// Restart reading output after `pauseOutput()`. No-op when not paused.
 	#[napi]
+	#[allow(clippy::missing_const_for_fn, reason = "napi export cannot be const")]
 	pub fn resume_output(&self) {
 		#[cfg(unix)]
 		let gate = self.handles.lock().output.clone();
@@ -500,6 +501,7 @@ impl PtyMaster {
 		}
 	}
 
+	#[allow(clippy::missing_const_for_fn, reason = "match on fd handle is not const-callable")]
 	fn raw_fd(&self) -> Option<i32> {
 		match self {
 			#[cfg(unix)]
