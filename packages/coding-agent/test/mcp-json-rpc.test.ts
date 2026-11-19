@@ -185,6 +185,8 @@ describe("callMCP", () => {
 		expect(capturedRequest?.headers).toEqual({
 			"Content-Type": "application/json",
 			Accept: "application/json, text/event-stream",
+			"MCP-Protocol-Version": "2026-07-28",
+			"Mcp-Method": "tools/call",
 			"User-Agent": "omp/test",
 		});
 		expect(capturedRequest?.signal).toBe(signal);
