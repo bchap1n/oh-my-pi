@@ -446,7 +446,6 @@ impl PtySession {
 	/// Restart reading output after `pauseOutput()`. No-op when not paused.
 	#[allow(clippy::missing_const_for_fn, reason = "napi macro is incompatible with const fn")]
 	#[napi]
-	#[allow(clippy::missing_const_for_fn, reason = "napi export cannot be const")]
 	pub fn resume_output(&self) {
 		#[cfg(unix)]
 		let gate = self.handles.lock().output.clone();
