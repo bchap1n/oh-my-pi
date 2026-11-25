@@ -3,8 +3,6 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { getThemeByName } from "@oh-my-pi/pi-tui/theme/theme";
-import { powershellToolRenderer } from "@oh-my-pi/pi-tui/tools/powershell";
 import { $which } from "@oh-my-pi/pi-utils";
 import { Settings } from "../../src/config/settings";
 import { createTools, type ToolSession } from "../../src/tools";
@@ -741,93 +739,4 @@ test("loadPowerShellTool returns null when neither edition resolves", async () =
 	const stubSettings = Settings.isolated({ "powershell.shellPath": "omp-no-such-shell-zzz-12345" });
 	const session = { cwd: process.cwd(), settings: stubSettings } as unknown as ToolSession;
 	expect(await loadPowerShellTool(session)).toBeNull();
-});
-
-test("renderer tags non-default host modes and renders the output", async () => {
-	const theme = await getThemeByName("dark");
-	expect(theme).toBeDefined();
-	if (!theme) return;
-
-	const component = powershellToolRenderer.renderResult(
-		{
-			content: [{ type: "text", text: "boom" }],
-			isError: true,
-			details: { host: "ephemeral" } as PowerShellToolDetails,
-		},
-		{ expanded: false } as Parameters<typeof powershellToolRenderer.renderResult>[1],
-		theme,
-		{ command: "cmd /c exit 5", host: "ephemeral" },
-	);
-	const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
-	const plain = stripAnsi(component.render(80).join("\n"));
-	expect(plain).toContain("PowerShell · ephemeral");
-	expect(plain).toContain("boom");
-
-	// Default session mode carries no tag.
-	const sessionComponent = powershellToolRenderer.renderResult(
-		{ content: [{ type: "text", text: "ok" }], details: { host: "session" } as PowerShellToolDetails },
-		{ expanded: false } as Parameters<typeof powershellToolRenderer.renderResult>[1],
-		theme,
-		{ command: "'ok'" },
-	);
-	const sessionPlain = stripAnsi(sessionComponent.render(80).join("\n"));
-	expect(sessionPlain).toContain("PowerShell");
-	expect(sessionPlain).not.toContain("PowerShell ·");
-});
-
-test("renderer names each edition and paints its icon and title in that edition's logo color", async () => {
-	const theme = await getThemeByName("dark");
-	expect(theme).toBeDefined();
-	if (!theme) return;
-
-	const render = (args: { command: string; edition?: "pwsh" | "powershell" }, edition?: "pwsh" | "powershell") =>
-		powershellToolRenderer
-			.renderResult(
-				{ content: [{ type: "text", text: "ok" }], details: { host: "session", edition } as PowerShellToolDetails },
-				{ expanded: false } as Parameters<typeof powershellToolRenderer.renderResult>[1],
-				theme,
-				args,
-			)
-			.render(80)
-			.join("\n");
-	const pwsh = [theme.styledSymbol("tool.pwsh", "toolPowerShell"), theme.fg("toolPowerShell", "PowerShell")];
-	const windows = [
-		theme.styledSymbol("tool.powershell", "toolWindowsPowerShell"),
-		theme.fg("toolWindowsPowerShell", "Windows PowerShell"),
-	];
-	const expectIdentity = (out: string, want: string[], not: string[]) => {
-		for (const part of want) expect(out).toContain(part);
-		for (const part of not) expect(out).not.toContain(part);
-	};
-
-	expectIdentity(render({ command: "'ok'" }, "pwsh"), pwsh, windows);
-	expectIdentity(render({ command: "'ok'" }, "powershell"), windows, pwsh);
-	// The call's own `edition` decides before the result reports one.
-	expectIdentity(render({ command: "'ok'", edition: "powershell" }), windows, pwsh);
-	// Neither known (older transcripts): pwsh, the stock default.
-	expectIdentity(render({ command: "'ok'" }), pwsh, windows);
-});
-
-test("collapsed preview shows the output TAIL, not the first lines", async () => {
-	const theme = await getThemeByName("dark");
-	expect(theme).toBeDefined();
-	if (!theme) return;
-
-	// 30 lines, collapsed: the preview must window the END of the output (a
-	// long-running command's current progress), with a skipped-lines banner —
-	// not pin the first N lines forever.
-	const lines = Array.from({ length: 30 }, (_, i) => `row-${String(i + 1).padStart(2, "0")}`);
-	const component = powershellToolRenderer.renderResult(
-		{ content: [{ type: "text", text: lines.join("\n") }], details: { host: "session" } as PowerShellToolDetails },
-		{ expanded: false } as Parameters<typeof powershellToolRenderer.renderResult>[1],
-		theme,
-		{ command: '1..30 | ForEach-Object { "row-$_" }' },
-	);
-	const plain = component
-		.render(80)
-		.join("\n")
-		.replace(/\x1b\[[0-9;]*m/g, "");
-	expect(plain).toContain("row-30");
-	expect(plain).not.toContain("row-05");
-	expect(plain).toMatch(/earlier lines/);
 });

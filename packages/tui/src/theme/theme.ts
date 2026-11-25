@@ -127,6 +127,18 @@ export function resolveColorValue(
 
 /** Share of `mdLink` in a derived `mdExtensionLink`; the rest is `text`. */
 const EXTENSION_LINK_TINT = 0.45;
+
+/**
+ * PowerShell edition colors from the official logos, one per surface
+ * brightness so each stays readable: pwsh (`assets/ps_black_64.svg` in
+ * PowerShell/PowerShell) uses its light-blue backdrop on dark surfaces and its
+ * `#2C5591` shadow blue on light; Windows PowerShell (`Powershell_128.svg`)
+ * uses the top and bottom of its body gradient.
+ */
+const POWERSHELL_LOGO_COLORS = {
+	dark: { toolPowerShell: "#A9C8FF", toolWindowsPowerShell: "#5391FE" },
+	light: { toolPowerShell: "#2C5591", toolWindowsPowerShell: "#3E6DBF" },
+} as const;
 const COLOR_BLIND_SHIFT = { h: 60, s: 0.71 };
 
 /** A theme resolved at one color depth. */
@@ -170,6 +182,9 @@ export class ResolvedTheme implements Theme {
 			};
 			colors.mdExtensionLink = mixHex(intended(colors.text), intended(colors.mdLink), EXTENSION_LINK_TINT);
 		}
+		const logoColors = POWERSHELL_LOGO_COLORS[light ? "light" : "dark"];
+		colors.toolPowerShell ??= logoColors.toolPowerShell;
+		colors.toolWindowsPowerShell ??= logoColors.toolWindowsPowerShell;
 		colors.thinkingMax ??= colors.thinkingXhigh ?? "";
 
 		this.name = json.name;

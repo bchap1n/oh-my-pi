@@ -1,9 +1,9 @@
 import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
 import type { PsHost, PsRunResult } from "@oh-my-pi/pi-natives";
-import { formatTruncationMetaNotice, type OutputMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
-import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
-import { DEFAULT_MAX_BYTES, OutputSink, streamTailUpdates, TailBuffer } from "@oh-my-pi/pi-tui/tools/streaming-output";
+import { formatTruncationMetaNotice, type OutputMeta } from "./output-meta-format";
+import { ToolError } from "./tool-errors";
+import { DEFAULT_MAX_BYTES, OutputSink, streamTailUpdates, TailBuffer } from "./streaming-output";
 import { $which, prompt } from "@oh-my-pi/pi-utils";
 import powershellDescription from "../prompts/tools/powershell.md" with { type: "text" };
 import powershellSummary from "../prompts/tools/powershell-summary.md" with { type: "text" };
