@@ -2088,51 +2088,31 @@ export class CommandController {
 
 	async handlePowerShellCommand(command: string, excludeFromContext = false): Promise<void> {
 		const isDeferred = this.ctx.session.isStreaming;
-		const component = new BashExecutionComponent(command, this.ctx.ui, excludeFromContext, "pwsh");
-		this.ctx.bashComponent = component;
+		const run = new ExecRun({ kind: "bash", source: command, excluded: excludeFromContext });
+		run.setExpanded(this.ctx.toolOutputExpanded);
+		this.ctx.bashRun = run;
 		// Provisional until the session records the run.
-		const block = new PresentedBlock(
-			component,
-			messageBlock({
-				role: "bashExecution",
-				command,
-				output: "",
-				exitCode: undefined,
-				cancelled: false,
-				truncated: false,
-				timestamp: Date.now(),
-				excludeFromContext,
-				shell: "pwsh",
-			}),
-		);
-		block.setExpanded(this.ctx.toolOutputExpanded);
-
-		if (isDeferred) {
-			this.ctx.pendingShellContainer.addChild(block);
-			this.ctx.pendingBashComponents.push(block);
-		} else {
-			this.ctx.present(block);
-		}
-		this.ctx.ui.requestRender();
+		const presentation = this.ctx.presentExecRun(run, { deferred: isDeferred });
 
 		try {
-			const result = await this.ctx.session.executePowerShell(command, undefined, {
+			const result = await this.ctx.session.executePowerShell(command, chunk => run.appendOutput(chunk), {
 				excludeFromContext,
-				onRecorded: message => block.setBlock(messageBlock(message)),
+				onRecorded: message => presentation.record(message),
 			});
 			const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
-			this.ctx.bashComponent?.setComplete(result.exitCode, result.cancelled, {
+			run.setComplete(result.exitCode, result.cancelled, {
 				output: result.output,
 				truncation: meta?.truncation,
 				artifactError: meta?.artifactError,
 			});
 		} catch (error) {
-			this.ctx.bashComponent?.setComplete(undefined, false);
+			run.setComplete(undefined, false);
 			this.ctx.showError(`PowerShell execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
 		}
 
-		this.ctx.bashComponent = undefined;
-		this.ctx.ui.requestRender();
+		if (this.ctx.bashRun === run) this.ctx.bashRun = undefined;
+		// The recorded cell is context now: the context meter counts it.
+		this.ctx.statusLine.refresh();
 	}
 
 	async handleCompactCommand(

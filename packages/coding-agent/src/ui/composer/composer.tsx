@@ -320,9 +320,10 @@ export interface ComposerOptions {
 
 const NATIVE_PLACEHOLDER = "What are we cooking?";
 const HISTORY_LIMIT = 100;
-const SHELL_SIGIL = /^\s*(?:!!?|\$\$?|\?)[ \t]?/;
-const SHELL_TITLES: Record<"bash" | "python" | "btw", string> = {
+const SHELL_SIGIL = /^\s*(?:!!?|%%?|\$\$?|\?)[ \t]?/;
+const SHELL_TITLES: Record<"bash" | "powershell" | "python" | "btw", string> = {
 	bash: "Runs in your shell",
+	powershell: "Runs in PowerShell",
 	python: "Runs in Python",
 	btw: "Asks a /btw side question",
 };

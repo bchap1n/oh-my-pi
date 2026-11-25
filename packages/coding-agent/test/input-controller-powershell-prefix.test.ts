@@ -11,7 +11,6 @@ function createContext() {
 	const composer = new Composer();
 	const ctx = {
 		composer,
-		ui: { requestRender: vi.fn() } as unknown as InteractiveModeContext["ui"],
 		session: {
 			isStreaming: false,
 			isCompacting: false,
@@ -58,7 +57,6 @@ function createContext() {
 		approvalOwnsComposer: false,
 		isGuidedGoalInterviewActive: () => false,
 		collabGuest: undefined,
-		isBtwFocused: false,
 	} as unknown as InteractiveModeContext;
 
 	return { ctx, composer, handlePowerShellCommand, onInputCallback, submitted };
