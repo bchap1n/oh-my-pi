@@ -14,9 +14,10 @@ export const SKILL_TOKEN_RE = /(^|\s)\/skill:([^\s/]+(?:\/[^\s/]+)?)(?=\s|$)/g;
 export function isLocalExecutionDraft(text: string): boolean {
 	const trimmedStart = text.trimStart();
 	if (trimmedStart.startsWith("!")) return true;
-	if (trimmedStart.charCodeAt(0) !== 36 /* $ */) return false;
+	const first = trimmedStart.charCodeAt(0);
+	if (first !== 36 /* $ */ && first !== 37 /* % */) return false;
 	if (trimmedStart.charCodeAt(1) === 123 /* { */) return false;
-	const sigilLength = trimmedStart.charCodeAt(1) === 36 /* $ */ ? 2 : 1;
+	const sigilLength = trimmedStart.charCodeAt(1) === first ? 2 : 1;
 	const next = trimmedStart.charCodeAt(sigilLength);
 	if (Number.isNaN(next)) return true;
 	return next === 32 /* space */ || next === 9 /* tab */ || next === 10 /* LF */ || next === 13; /* CR */

@@ -1181,7 +1181,8 @@ export class InputController {
 				this.ctx.isBtwFocused &&
 				!text.startsWith("/") &&
 				!text.startsWith("!") &&
-				parsePythonCommandInput(text) === undefined
+				parsePythonCommandInput(text) === undefined &&
+				parsePowerShellCommandInput(text) === undefined
 			) {
 				if (text) await this.#submitBtwFollowUp(text);
 				return;
