@@ -1438,7 +1438,14 @@ export class InputController {
 			if (powerShellCommand) {
 				const { code, isExcluded } = powerShellCommand;
 				if (code) {
-					this.ctx.editor.addToHistory(text);
+					if (this.ctx.session.isPowerShellRunning) {
+						this.ctx.showWarning(
+							`A PowerShell execution is already running. Press ${actionKey("app.interrupt", this.ctx.keybindings)} to cancel it first.`,
+						);
+						this.ctx.composer.setText(text);
+						return;
+					}
+					this.ctx.composer.addToHistory(text);
 					await this.ctx.handlePowerShellCommand(code, isExcluded);
 					this.ctx.isPowerShellMode = false;
 					this.ctx.updateEditorBorderColor();
