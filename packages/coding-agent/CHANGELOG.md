@@ -119,6 +119,52 @@
 - `omp plugin disable` and the Settings → Plugins enable toggle now note that running sessions keep the plugin until they restart ([#9722](https://github.com/can1357/oh-my-pi/issues/9722))
 - Status line keeps the auto indicator on an auto-resolved thinking effort (e.g. `⟳ high`) so it is distinguishable from a pinned level ([#5951](https://github.com/can1357/oh-my-pi/issues/5951))
 - A configured MCP `oauth.scope` now overrides scopes advertised by the server on initial authorization and `/mcp reauth`, so you can request a narrower (or different) scope set than discovery reports ([#7841](https://github.com/can1357/oh-my-pi/issues/7841))
+- `prewalk.auto: escalate` plans a front-loaded task on `prewalk.from` before handing off, and returns to the starting model at the next task; `prewalk.autoTarget: "@initial"` hands back to the model and thinking level the task started on. `suggest` reports the planner `escalate` would move to ([#16243](https://github.com/can1357/oh-my-pi/pull/16243) by [@taibenvenuti](https://github.com/taibenvenuti))
+- The `powershell` tool takes an `edition` argument (`pwsh` or `powershell`/Windows PowerShell) so a conversation can run both in the same session — each edition keeps its own independent session host, so switching never discards the other's state. New `powershell.defaultEdition` setting (default `pwsh`) picks which one a call uses when it doesn't specify, and tool cards name the edition they ran ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
+- The bash interceptor (`bashInterceptor.enabled`) redirects a bare `pwsh`/`powershell.exe` invocation to the `powershell` tool when it is available, so PowerShell runs in the persistent host with a correctly reset `$env:PSModulePath` instead of whatever bash's own environment carries ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
+- In ACP mode, `powershell` tool calls ask the client for execution permission like `bash` does, and the permission prompt shows the command as `PS> …` ([#13237](https://github.com/can1357/oh-my-pi/pull/13237) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
+- The subagents HUD mutes the status mark, and tray cards mark, subagents that are only waiting on their own agents or jobs (`wait`, `vibe_wait`), so they stand apart from subagents doing work
+- Retry fallbacks now record why they switched models on the fallback's `model_change` entry: the model left, the trigger (`request-error`, `agent-loop`, `usage-preflight`, or `missing-credential`), and the error or condition. A fallback after the agent loop stopped a turn itself, such as a soft tool requirement the model never met, is announced as `Turn stopped: …` instead of `Request failed: …` ([#20336](https://github.com/can1357/oh-my-pi/pull/20336) by [@baekjosh](https://github.com/baekjosh))
+- The bash tool now runs `cmd <<'EOF' && \` as meant: the stray `\` that pushed the heredoc body below the next line (running that line as a command) is dropped, with a notice, when the result parses
+- Tray cards now mark subagents that are only waiting on their own agents or jobs (`wait`, `vibe_wait`), so Tern shows them apart from subagents doing work
+- The shell's `tail -r` builtin now takes `-c`, `-b`, and `+N` counts like BSD `tail`, and `tail -b N` selects 512-byte blocks; `-r` with `-f` is BSD's usage error instead of a "pipe through tac" refusal
+- The bash tool's `time -l`, `time -v` and `command time` report a command's peak memory, page faults and context switches like macOS and GNU `/usr/bin/time`, on every platform, written to `time`'s own stderr so a pipe can read them; plain `time` and `time -p` stay bash's keyword
+- The shell's `stat` builtin now supports every BSD option and format directive, including `-l`, `-F`, `-r`, and `%Y`, `%Z`, `%f`, `%v`
+- The shell's `ast-grep` builtin now runs `ast-grep test` (with snapshots, `--update-all`, `--filter`, and `--skip-snapshot-tests`), scaffolding with `ast-grep new -y`, and `--inspect` on `run`/`scan`; `lsp`, `completions`, and `--interactive` remain unsupported
+- The shell's `fd` builtin now runs commands for its results with `-x`/`--exec` and `-X`/`--exec-batch` (with `--batch-size`), lists them with `-l`/`--list-details`, and matches whole names with `--exact`; these options used to fail
+- Added `discovery.type: openrouter` for `models.yml` providers that front OpenRouter under their own URL and key: their model list now comes from OpenRouter's public catalog, and requests follow OpenRouter's request format.
+- With Vim editing mode on, `Ctrl+R` in Normal mode redoes instead of opening history search; history search stays on `Ctrl+R` in Insert mode ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added Vim mode to ask-form textareas, one-line text fields, "Other" answers, option notes, and text prompts: `Escape` leaves Insert mode first instead of discarding what you typed, and `j`/`k` move between a form's option rows ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added `tui.vimYankToClipboard` (off by default, as in Vim): turn it on to make every yank copy to the system clipboard, not just `"+y`/`"*y` ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added Vim `/` and `?` in Normal mode to open prompt-history search, the same as `Ctrl+R`, and `"+p` to put the system clipboard ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added Vim `:` in Normal mode on an empty prompt: it starts a slash command, opening the command menu as a typed `/` does ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added `tui.vimStartMode` (`/settings` → Interaction → "Vim Start Mode"): `normal` starts each prompt, and dialog text boxes, in Vim Normal mode ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- With Vim editing mode on, Normal-mode `k`/`j` (and Up/Down) past the first or last line step through prompt history, as in zsh's vi mode; `j` past the newest prompt brings back your draft with its pastes, attachments, and undo history, and edits made to a recalled prompt are kept until you send. `k` off the top first moves into a waiting question box, as Insert-mode Up does ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added `tui.vimShowCommand` (on by default): the status line echoes a half-typed Vim command (`15d` before its last `d`), also when **Vim Mode Indicator** is set to hidden ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Added `archive.calls`, `archive.grep`, `archive.stats`, and `archive.messages` to the eval `archive` object: list past tool calls with their results and the reasoning before them, regex-search thinking, replies, arguments, and results, count calls and errors by tool, day, model, version, project, or session, and read a transcript's records whole; `subagents: true` adds the subagent transcripts of the sessions in scope
+- Added `since`/`until` to every `archive` listing: an age like `8d`, an ISO date, or a date-time narrows projects, sessions, search, prompts, recaps, and activity to that window
+
+### Changed
+
+- A subagent spawned with a single step receives that step as written, without the `Complete assignment thoroughly:` and `# Step 1 of 1` framing
+- Models now get explicit PowerShell routing even when the `powershell` tool is only listed in the `xd://` catalog: its catalog line names both editions and the configured default, the `bash` prompt says to use the `powershell` tool with `edition` instead of running pwsh/powershell.exe, and the tool docs warn against nesting `powershell.exe` inside a pwsh command ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
+- Shell command previews show chained commands with their real `&&`/`||` operators instead of `and`/`or`, and `cd dir` as written instead of a `cwd dir` badge
+- Asked to verify, optimize, or measure something, the agent keeps its checks to the code in question: that code's tests and its callers' instead of the whole suite, and a micro-benchmark or a scaled-down input instead of the full benchmark or the full slow case, which it runs once at the end
+- The agent works statically and verifies each code change once, after its last edit, before replying: the project's static check for renames and other behavior-preserving edits, the named or narrowest test for behavior changes, and nothing for questions. Its reply names that check and the result. It no longer runs checks between edits
+- The omp daemon no longer loads the model catalog, the AI provider code or most of the TUI; in npm installs it uses about 24 MB less resident memory (about 150 MB less when omp runs from source) ([#20224](https://github.com/can1357/oh-my-pi/pull/20224) by [@JustasMasiulis](https://github.com/JustasMasiulis))
+- With Vim editing mode on, `y` no longer copies to the system clipboard; use `"+y` / `"*y`, or turn on `tui.vimYankToClipboard` to get the old behavior ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- With Vim editing mode on, the prompt after a message you send starts in **Vim Start Mode** (Insert by default) instead of staying in the mode you sent it from ([#20037](https://github.com/can1357/oh-my-pi/pull/20037) by [@lericson](https://github.com/lericson))
+- Eval-defined tools (`@tool` / `tool(fn)` and the `tools` field on `task`, `agent()`, `workpool()`) are now off by default; set `eval.tools.enabled` to turn them back on
+- When `/wt` moves the session into an ovnfs checkout, its message now says "Moved to ovnfs checkout <name> at <path>" instead of "Moved to worktree"
+- Cross-instance agent messaging (`task.crossInstance`) is now on by default: other omp instances in the same folder can read your agents' outputs and message them; turn the setting off to opt out
+
+### Changed
+
+- The interactive UI is rebuilt on `@oh-my-pi/pi-tui`: Tern draws the same view tree natively that other terminals get as rows, so both render one layout. Screens look as before.
+- Quitting writes the blocks still on screen (running tools, the last reply) into terminal history instead of clearing them.
+- The model picker spans the full terminal width.
+- Pasting text and pressing Enter in the same keystroke burst submits the pasted text.
+- The bash tool's visualization keeps a one-line awk, jq, regex or other embedded program highlighted where it appears in the command; only multi-line programs move below it behind a `⟦awk ↓⟧`-style chip.
 
 ### Fixed
 
@@ -927,16 +973,6 @@
 - Fixed Tern and WebKit browser calls that incorrectly exposed unsupported page event-listener APIs; errors now identify the supported alternatives.
 - Fixed browser timeout and busy-page errors to include the current URL, affected tab, and actionable recovery guidance.
 - Fixed Mnemopi embedding failures being silently downgraded to keyword search; provider errors now produce a warning, including in print mode on stderr.
-- Fixed `read` line selectors on `xd://` docs (`xd://eval/browser:1-200`) failing with `Unknown topic`; `write` now rejects a selector on an `xd://` device URL instead of treating it as part of the device name
-### Added
-
-- The bash interceptor (`bashInterceptor.enabled`) redirects a bare `pwsh`/`powershell.exe` invocation to the `powershell` tool when it is available, so PowerShell runs in the persistent host with a correctly reset `$env:PSModulePath` instead of whatever bash's own environment carries ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
-- The `powershell` tool takes an `edition` argument (`pwsh` or `powershell`/Windows PowerShell) so a conversation can run both in the same session — each edition keeps its own independent session host, so switching never discards the other's state. New `powershell.defaultEdition` setting (default `pwsh`) picks which one a call uses when it doesn't specify ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
-- In ACP mode, `powershell` tool calls ask the client for execution permission like `bash` does, and the permission prompt shows the command as `PS> …` ([#13237](https://github.com/can1357/oh-my-pi/pull/13237) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
-
-### Changed
-
-- Models now get explicit PowerShell routing even when the `powershell` tool is only listed in the `xd://` catalog: its catalog line names both editions and the configured default, the `bash` prompt says to use the `powershell` tool with `edition` instead of running pwsh/powershell.exe, and the tool docs warn against nesting `powershell.exe` inside a pwsh command ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
 
 ## [18.20.2] - 2026-11-14
 

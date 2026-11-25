@@ -2677,6 +2677,10 @@
 - Added `TextEdit.paste` to identify edits produced by bracketed paste operations.
 - Added `tool.gl` symbols to the Unicode, Nerd Font, and ASCII presets for the GitLab tool.
 - Terminal painters can attach one-shot marks to rows as they enter scrollback without re-emitting them on redraw.
+### Added
+
+- Added `@oh-my-pi/pi-tui`, the terminal UI that replaces `@oh-my-pi/pi-tui`: one tree of Tern Surface Protocol nodes drawn natively by Tern and as terminal rows elsewhere, with signals and a compiler-free JSX runtime, role-based painters and widgets, a terminal driver (input, capabilities, multiplexers, images, resize policies, notifications), Markdown and text utilities, themes, and test utilities (`testing/terminal`, `testing/cells`)
+- Added optional `toolPowerShell` / `toolWindowsPowerShell` theme colors and `tool.pwsh` / `tool.powershell` symbols for the two PowerShell editions, derived from each edition's logo in a shade readable on the theme's background ([#13236](https://github.com/can1357/oh-my-pi/pull/13236) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
 
 ### Fixed
 
