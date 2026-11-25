@@ -914,7 +914,16 @@ async function retryUnsupportedVersion(
 	if (!isRecord(data) || !Array.isArray(data.supported)) return undefined;
 	const version = data.supported.find(value => typeof value === "string");
 	if (version === undefined) return undefined;
-	return discoverResultOf(await request(version));
+	// The retry is best-effort: a server that advertises a revision it still
+	// refuses proves its era by the -32022 code alone, so a failed retry
+	// degrades to "modern, no discover" instead of throwing past the caller.
+	let retried: unknown;
+	try {
+		retried = await request(version);
+	} catch {
+		return undefined;
+	}
+	return discoverResultOf(retried);
 }
 
 /**
