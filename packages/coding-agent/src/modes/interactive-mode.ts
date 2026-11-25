@@ -3931,7 +3931,15 @@ export class InteractiveMode implements InteractiveModeContext {
 	updateEditorBorderColor(): void {
 		const accentEnabled = !isSettingsInitialized() || cfgStatusLineSessionAccent.get(settings) !== false;
 		const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
-		const inputMode = this.isBashMode ? "bash" : this.isPowerShellMode ? "powershell" : this.isPythonMode ? "python" : this.isBtwMode ? "btw" : undefined;
+		const inputMode = this.isBashMode
+			? "bash"
+			: this.isPowerShellMode
+				? "powershell"
+				: this.isPythonMode
+					? "python"
+					: this.isBtwMode
+						? "btw"
+						: undefined;
 		const color = composerBorderColor({
 			inputMode,
 			vimMode: this.composer.vimMode(),
@@ -3956,7 +3964,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			...(this.isBashMode
 				? { shell: { kind: "bash", excluded: draft.startsWith("!!") } }
 				: this.isPowerShellMode
-					? { shell: { kind: "powershell", excluded: draft.startsWith("!!") } }
+					? { shell: { kind: "powershell", excluded: draft.startsWith("%%") } }
 					: this.isPythonMode
 						? { shell: { kind: "python", excluded: draft.startsWith("$$") } }
 						: this.isBtwMode
