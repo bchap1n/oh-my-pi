@@ -23,7 +23,7 @@ import {
 	normalizeMCPTransportError,
 } from "../errors";
 import { routeProgressNotification, withProgressToken } from "../progress";
-import { MCP_PROTOCOL_VERSION, MCPMeta } from "../protocol";
+import { MCP_PROTOCOL_VERSION, MCPMeta, withRequestMeta } from "../protocol";
 import { RequestIdAllocator } from "../request-id";
 import type { JsonRpcError, JsonRpcMessage, MCPRequestOptions, MCPTransport } from "../types";
 import { toJsonRpcError } from "../types";
@@ -157,7 +157,11 @@ export class HttpUpstream implements MCPTransport {
 	}
 
 	/** Headers of a POST. `method` is undefined for a JSON-RPC response, which only the legacy binding sends. */
-	#postHeaders(method: string | undefined, params: Record<string, unknown>): Record<string, string> {
+	#postHeaders(
+		method: string | undefined,
+		params: Record<string, unknown>,
+		extra?: Record<string, string>,
+	): Record<string, string> {
 		const standard: Record<string, string> = {
 			"Content-Type": "application/json",
 			Accept: "application/json, text/event-stream",
@@ -172,7 +176,7 @@ export class HttpUpstream implements MCPTransport {
 		standard["Mcp-Method"] = method;
 		const nameParam = Object.hasOwn(NAME_PARAM, method) ? params[NAME_PARAM[method]] : undefined;
 		if (typeof nameParam === "string") standard["Mcp-Name"] = encodeMcpHeaderValue(nameParam);
-		return { ...this.requestHeaders?.(method, params), ...standard };
+		return { ...this.requestHeaders?.(method, params), ...extra, ...standard };
 	}
 
 	/** Combine caller cancellation with upstream shutdown for every HTTP operation. */
@@ -441,9 +445,10 @@ export class HttpUpstream implements MCPTransport {
 
 		const id = this.#requestIds.next(this.#spec.requestIdFormat);
 		options?.onRequestId?.(id);
-		const payload = options?.onProgress ? withProgressToken(params, id) : (params ?? {});
+		const withMeta = this.#mode === "modern" ? withRequestMeta(params) : params;
+		const payload = options?.onProgress ? withProgressToken(withMeta, id) : (withMeta ?? {});
 		const body = JSON.stringify({ jsonrpc: "2.0", id, method, params: payload });
-		const generated = this.#postHeaders(method, payload);
+		const generated = this.#postHeaders(method, payload, options?.paramHeaders);
 
 		// Legacy: caller cancellation owns the request only until its response
 		// arrives; messages the server keeps sending on the same stream belong

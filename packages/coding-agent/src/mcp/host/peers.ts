@@ -892,6 +892,41 @@ function eraOfDiscoverError(error: unknown): McpEra | undefined {
 }
 
 /**
+ * A modern server may refuse the probe's revision with -32022 and list the
+ * ones it accepts. Answer with the first advertised revision once; a server
+ * that only lists revisions we do not speak still proves its era by the code.
+ */
+async function retryUnsupportedVersion(
+	error: unknown,
+	request: (version: string) => Promise<unknown>,
+): Promise<MCPDiscoverResult | undefined> {
+	if (!(error instanceof MCPTransportError) || error.rpc?.code !== MCPErrorCode.UnsupportedProtocolVersion) {
+		return undefined;
+	}
+	let data: unknown = error.rpc.data;
+	if (typeof data === "string") {
+		try {
+			data = JSON.parse(data);
+		} catch {
+			return undefined;
+		}
+	}
+	if (!isRecord(data) || !Array.isArray(data.supported)) return undefined;
+	const version = data.supported.find(value => typeof value === "string");
+	if (version === undefined) return undefined;
+	// The retry is best-effort: a server that advertises a revision it still
+	// refuses proves its era by the -32022 code alone, so a failed retry
+	// degrades to "modern, no discover" instead of throwing past the caller.
+	let retried: unknown;
+	try {
+		retried = await request(version);
+	} catch {
+		return undefined;
+	}
+	return discoverResultOf(retried);
+}
+
+/**
  * Probe a subprocess with `initialize` first: the handshake era requires it as
  * the very first request — strict servers such as rmcp exit on anything else —
  * and `server/discover`, asked only once the handshake is done, names the
@@ -906,7 +941,17 @@ async function probeStdio(upstream: StdioUpstream, deps: McpPeerDeps, signal: Ab
 		// era alone, so ask its own question before giving up.
 		const discovered = await outcomeOf(upstream.request("server/discover", { _meta: requestMeta() }, { signal }));
 		if ("error" in discovered) {
-			if (eraOfDiscoverError(discovered.error) === "modern") return { era: "modern" };
+			const era = eraOfDiscoverError(discovered.error);
+			if (era === "modern") {
+				const retried = await retryUnsupportedVersion(discovered.error, version =>
+					upstream.request(
+						"server/discover",
+						{ _meta: { ...requestMeta(), [MCPMeta.protocolVersion]: version } },
+						{ signal },
+					),
+				);
+				return { era: "modern", discover: retried };
+			}
 		} else {
 			const result = discoverResultOf(discovered.value);
 			if (result) return { era: "modern", discover: result };
@@ -947,7 +992,16 @@ async function probeHttp(spec: McpServerSpec, deps: McpPeerDeps, signal: AbortSi
 		if (result) return { era: "modern", discover: result };
 	} catch (error) {
 		const era = eraOfDiscoverError(error);
-		if (era === "modern") return { era };
+		if (era === "modern") {
+			const retried = await retryUnsupportedVersion(error, version =>
+				modern.request(
+					"server/discover",
+					{ _meta: { ...requestMeta(), [MCPMeta.protocolVersion]: version } },
+					{ signal },
+				),
+			);
+			return { era: "modern", discover: retried };
+		}
 		// Anything but a server's own answer or one of the statuses a
 		// handshake-era endpoint gives an unknown POST is the caller's to see:
 		// an auth challenge, an outage.

@@ -554,20 +554,25 @@ describe("era probe of a remote server", () => {
 		const result = await mcpUpstreams.probe(httpSpec(url), realDeps());
 
 		expect(result).toEqual({ era: "modern" });
-		expect(seen.map(entry => entry.body.method)).toEqual(["server/discover"]);
+		// The probe retries once with the advertised revision; this server refuses
+		// the retry too, so the era still stands and no discover result is returned.
+		expect(seen.map(entry => entry.body.method)).toEqual(["server/discover", "server/discover"]);
+		expect((paramsOf(seen[1])._meta as Record<string, unknown> | undefined)?.[MCPMeta.protocolVersion]).toBe(
+			MCP_PROTOCOL_VERSION,
+		);
 	});
 
 	it.each([
-		["future", { supported: ["2027-01-01"] }],
-		["unknown older", { supported: ["2025-07-09"] }],
-		["malformed", { supported: "2025-06-18" }],
-		["malformed list", { supported: ["2025-06-18", 1] }],
-		["missing", undefined],
-	] as const)("takes a 32022 with %s revision data as modern, without initialize", async (_label, data) => {
+		["future", { supported: ["2027-01-01"] }, 2],
+		["unknown older", { supported: ["2025-07-09"] }, 2],
+		["malformed", { supported: "2025-06-18" }, 1],
+		["malformed list", { supported: ["2025-06-18", 1] }, 2],
+		["missing", undefined, 1],
+	] as const)("takes a 32022 with %s revision data as modern, without initialize", async (_label, data, discovers) => {
 		const { url, seen } = serve(({ body }) => rpcError(400, body.id, -32022, "Unsupported protocol version", data));
 
 		expect(await mcpUpstreams.probe(httpSpec(url), realDeps())).toEqual({ era: "modern" });
-		expect(seen.map(entry => entry.body.method)).toEqual(["server/discover"]);
+		expect(seen.map(entry => entry.body.method)).toEqual(Array.from({ length: discovers }, () => "server/discover"));
 	});
 
 	it("falls back to initialize when a 32022 lists a compatible legacy revision, whatever status carries it", async () => {
@@ -804,7 +809,13 @@ describe("era cache through the local HTTP host", () => {
 		try {
 			await link.connect();
 			await expect(link.request("ping")).rejects.toMatchObject({ rpc: error });
-			expect(seen.map(entry => entry.body.method).sort()).toEqual(["ping", "server/discover", "server/discover"]);
+			// A 32022 that advertises a revision makes the probe retry once with it;
+			// a bare 500 leaves the era unknown and the original attachment stands.
+			expect(seen.map(entry => entry.body.method).sort()).toEqual(
+				outcome === "remains modern"
+					? ["ping", "server/discover", "server/discover", "server/discover"]
+					: ["ping", "server/discover", "server/discover"],
+			);
 			expect(link.connected).toBe(true);
 			expect(reattachments).toBe(0);
 		} finally {

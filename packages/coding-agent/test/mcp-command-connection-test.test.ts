@@ -212,7 +212,8 @@ describe("interactive /mcp test", () => {
 	});
 
 	it("treats an abort landing during manager sync as a completed test", async () => {
-		vi.spyOn(mcpClient, "connectToServer").mockResolvedValue(githubConnection());
+		const connection = { ...githubConnection(), era: "modern" as const, protocolVersion: "2026-07-28" };
+		vi.spyOn(mcpClient, "connectToServer").mockResolvedValue(connection);
 		vi.spyOn(mcpClient, "listTools").mockResolvedValue([{ name: "search_issues" }] as never);
 		vi.spyOn(mcpClient, "disconnectServer").mockResolvedValue();
 		const { promise: syncStarted, resolve: syncStartedResolve } = Promise.withResolvers<void>();

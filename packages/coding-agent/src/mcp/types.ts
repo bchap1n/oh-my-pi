@@ -299,6 +299,10 @@ export interface MCPRequestOptions {
 	 * notifications are tagged with that id.
 	 */
 	onRequestId?: (id: string | number) => void;
+	/** Tool/prompt name or resource URI for the `Mcp-Name` HTTP header. */
+	name?: string;
+	/** Per-param HTTP headers (`Mcp-Param-*`) for a modern-era HTTP request. */
+	paramHeaders?: Record<string, string>;
 }
 
 /** Transport interface - abstracts stdio/http */
@@ -338,6 +342,9 @@ export type TransportFactory = (config: MCPServerConfig) => Promise<MCPTransport
 // MCP Client Types
 // =============================================================================
 
+/** Which protocol generation a server speaks. */
+export type MCPProtocolEra = "modern" | "legacy";
+
 /** A filesystem root a session exposes to MCP servers. */
 export interface MCPRoot {
 	uri: string;
@@ -352,7 +359,11 @@ export interface MCPServerConnection {
 	config: MCPServerConfig;
 	/** Transport instance */
 	transport: MCPTransport;
-	/** Server info from initialize */
+	/** Protocol era this server was resolved as (absent on hand-built fixtures). */
+	era?: MCPProtocolEra;
+	/** Protocol revision in use on this connection. */
+	protocolVersion?: string;
+	/** Server info from initialize/discover */
 	serverInfo: MCPImplementation;
 	/** Server capabilities */
 	capabilities: MCPServerCapabilities;

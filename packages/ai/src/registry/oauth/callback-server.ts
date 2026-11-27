@@ -65,7 +65,7 @@ function isAddressInUse(error: unknown): boolean {
 
 /** Keep JSON data inside the template's script element; JSON.parse restores the original text. */
 function serializeCallbackState(state: unknown): string {
-	return JSON.stringify(state).replaceAll("<", "\\u003c");
+	return JSON.stringify(state).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
 }
 
 const STATE_ENCODER = new TextEncoder();
@@ -130,7 +130,13 @@ export interface OAuthCallbackFlowOptions {
 	timeoutMs?: number;
 }
 
-function parseNativeCallback(input: string, redirectUri: string, expectedState: string): CallbackResult {
+interface NativeCallback {
+	result: CallbackResult;
+	/** The raw redirect URL, for flows that validate callback parameters. */
+	url: URL;
+}
+
+function parseNativeCallback(input: string, redirectUri: string, expectedState: string): NativeCallback {
 	let callback: URL;
 	let expected: URL;
 	try {
@@ -162,7 +168,7 @@ function parseNativeCallback(input: string, redirectUri: string, expectedState: 
 		throw new AIError.OAuthError("OAuth application callback omitted the authorization code", {
 			kind: "device-auth",
 		});
-	return { code, state };
+	return { result: { code, state }, url: callback };
 }
 
 /**
@@ -234,6 +240,15 @@ export abstract class OAuthCallbackFlow {
 	abstract exchangeToken(code: string, state: string, redirectUri: string): Promise<OAuthCredentials>;
 
 	/**
+	 * Optional hook invoked with the raw authorization-redirect URL right before
+	 * the authorization code is redeemed. A flow may use it to reject a callback
+	 * whose `iss` (issuer) does not match the authorization server it started
+	 * against (OAuth 2.0 authorization-server-issuer detection, RFC 9207).
+	 * Throwing aborts the login before any token exchange happens.
+	 */
+	onAuthorizeRedirect?(url: URL): void;
+
+	/**
 	 * Generate CSRF state token. Override if provider needs custom state generation.
 	 */
 	generateState(): string {
@@ -267,7 +282,7 @@ export abstract class OAuthCallbackFlow {
 			: await this.#startCallbackServer(state);
 		const receiverAbort = new AbortController();
 		let receiver: NativeSchemeCallbackReceiver | undefined;
-		let nativeCallback: Promise<CallbackResult> | undefined;
+		let nativeCallback: Promise<NativeCallback> | undefined;
 
 		try {
 			this.#throwIfCancelled();
@@ -602,6 +617,29 @@ export abstract class OAuthCallbackFlow {
 
 		if (resultState.ok) {
 			const resolve = this.#callbackResolve;
+			// Let a flow reject a redirect whose issuer does not match the
+			// authorization server it started against, before the code is
+			// redeemed (RFC 9207).
+			try {
+				this.onAuthorizeRedirect?.(url);
+			} catch (error) {
+				const reject = this.#callbackReject;
+				const message = error instanceof Error ? error.message : String(error);
+				queueMicrotask(() => {
+					reject?.(
+						error instanceof Error ? error : new AIError.OAuthError(String(error), { kind: "device-auth" }),
+					);
+				});
+				// Render the failure variant of the callback page: this
+				// redirect carried our state but was rejected, so the user must
+				// see "Authentication Failed", not the success page.
+				return new Response(
+					(templateHtml as unknown as string).replaceAll("__OAUTH_STATE__", () =>
+						serializeCallbackState({ ok: false as const, error: message }),
+					),
+					{ status: 500, headers: { "Content-Type": "text/html" } },
+				);
+			}
 			queueMicrotask(() => {
 				resolve?.({ code: resultState.code, state: resultState.state });
 			});
@@ -630,7 +668,7 @@ export abstract class OAuthCallbackFlow {
 	/**
 	 * Wait for OAuth callback or manual input (whichever comes first).
 	 */
-	#waitForCallback(expectedState: string, nativeCallback?: Promise<CallbackResult>): Promise<CallbackResult> {
+	#waitForCallback(expectedState: string, nativeCallback?: Promise<NativeCallback>): Promise<CallbackResult> {
 		const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
 		const settledSignal = new AbortController();
 		const signals = this.ctrl.signal
@@ -655,7 +693,16 @@ export abstract class OAuthCallbackFlow {
 		const callbackPromise = callback.promise;
 
 		const candidates = [callbackPromise];
-		if (nativeCallback) candidates.push(nativeCallback);
+		if (nativeCallback) {
+			// Native-scheme redirects carry the same `iss` exposure as the
+			// loopback callback; run the guard before accepting the result.
+			candidates.push(
+				nativeCallback.then(native => {
+					this.onAuthorizeRedirect?.(native.url);
+					return native.result;
+				}),
+			);
+		}
 		if (this.ctrl.onManualCodeInput) {
 			const requestManualInput = this.ctrl.onManualCodeInput;
 			const manualPromise = (async (): Promise<CallbackResult> => {
@@ -673,7 +720,34 @@ export abstract class OAuthCallbackFlow {
 								});
 							}
 							if (!parsed.code) return null;
-							if (expectedState && parsed.state && !stateMatches(parsed.state, expectedState)) return null;
+if (expectedState && parsed.state && !stateMatches(parsed.state, expectedState)) return null;
+							// A pasted redirect URL (or bare query string) carries the
+							// same RFC 9207 `iss` exposure as the loopback callback -
+							// run the same guard (a bare pasted code has nothing to
+							// validate). A mismatch rejects the login, mirroring the
+							// callback path.
+							const trimmed = input.trim();
+							let redirectUrl: URL | undefined;
+							try {
+								redirectUrl = new URL(trimmed);
+							} catch {
+								// parseCallbackInput also accepts query-string callback
+								// forms (`?code=...&iss=...`, bare `code=...`, and
+								// `#code=...` fragments); validate those against a dummy
+								// base so the hook still sees the pasted parameters (a
+								// leading `#` is a fragment delimiter, so normalize it to
+								// `?` before wrapping). A bare pasted code is not a
+								// callback URL - leave it on the no-redirect path.
+								if (/code=/.test(trimmed)) {
+									const bare = trimmed.replace(/^[?#]/, "");
+									try {
+										redirectUrl = new URL(`http://localhost/?${bare}`);
+									} catch {
+										redirectUrl = undefined;
+									}
+								}
+							}
+							if (redirectUrl) this.onAuthorizeRedirect?.(redirectUrl);
 							return { code: parsed.code, state: parsed.state ?? "" };
 						}),
 					]);
