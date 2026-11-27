@@ -1,5 +1,6 @@
 /** Registers every built-in tool presenter (each module registers itself on import). */
 import "./bash";
+import "./powershell";
 import "./tool-command";
 import "./ask";
 import "./grep";

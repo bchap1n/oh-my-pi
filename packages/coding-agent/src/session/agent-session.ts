@@ -280,6 +280,7 @@ import {
 	revokeComputerControlForOwner,
 } from "../tools/computer/supervisor";
 import { isAutoQaEnabled } from "../tools/report-tool-issue";
+import { disposePsHostSession, POWERSHELL_EDITIONS, psHostEditionKey } from "../tools/pshost-manager";
 import {
 	buildResolveReminderMessage,
 	buildResolveUnsatisfiedNotice,
@@ -1307,6 +1308,8 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 
 	readonly #eval: EvalRunner;
 	readonly #evalToolSession: ToolSession | undefined;
+	/** Live `%`/`%%` PowerShell runs, so Esc and dispose can abort them. */
+	readonly #powerShellAborts = new Set<AbortController>();
 	/** Manager owned by this top-level session; subagents borrow but never dispose it. */
 	readonly #ownedAsyncJobManager: AsyncJobManager | undefined;
 	/** Manager of this session's root, used for its own job queries and deliveries. */
@@ -7224,6 +7227,26 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		}
 	}
 
+	async #disposePsHost(sessionId: string | undefined): Promise<void> {
+		if (!sessionId) return;
+		// Each PowerShell edition ("pwsh", "powershell") gets its own pooled
+		// host per base key (see psHostEditionKey) so both can run
+		// concurrently; teardown must reap every edition, not just whichever
+		// one happened to be used.
+		const keys = [sessionId, `${sessionId}-advisor`].flatMap(base =>
+			POWERSHELL_EDITIONS.map(edition => psHostEditionKey(base, edition)),
+		);
+		try {
+			await withTimeout(
+				Promise.all(keys.map(key => disposePsHostSession(key))),
+				3_000,
+				"Timed out disposing PowerShell hosts during dispose",
+			);
+		} catch (error) {
+			logger.warn("Failed to dispose PowerShell hosts during dispose", { error: String(error) });
+		}
+	}
+
 	/**
 	 * Turn-settle checkpoint for owned headless browser tabs (issue #8246).
 	 * Close tabs idle past `browser.idleCloseSec` as the memory backstop,
@@ -7380,6 +7403,7 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 			this.#disposeOwnedAsyncJobs(),
 			this.#eval.disposeKernels(),
 			this.#releaseOwnedBrowserTabs(this.#eval.getKernelOwnerId()),
+			this.#disposePsHost(this.sessionManager.getSessionId()),
 			this.#releaseOwnedComputerSessions(this.#eval.getKernelOwnerId()),
 			this.#disconnectOwnedMcp(),
 			advisorRecorderClosed,
@@ -14233,8 +14257,83 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	}
 
 	/** Record a bash result supplied outside executeBash in the current ownership scope. */
-	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void {
+	recordBashResult(
+		command: string,
+		result: BashResult,
+		options?: {
+			excludeFromContext?: boolean;
+			shell?: "bash" | "pwsh";
+			onRecorded?: (message: BashExecutionMessage) => void;
+		},
+	): void {
 		this.#bash.recordBashResult(command, result, options);
+	}
+
+	/**
+	 * Runs a `%`/`%%` PowerShell command in the session's pooled pwsh host, so
+	 * variables, modules, and `$__omp.Last` persist exactly as they do for the
+	 * `powershell` tool. The run is recorded as a `bashExecution` message tagged
+	 * `shell: "pwsh"`.
+	 */
+	async executePowerShell(
+		command: string,
+		onChunk?: (chunk: string) => void,
+		options?: { excludeFromContext?: boolean; onRecorded?: (message: BashExecutionMessage) => void },
+	): Promise<BashResult> {
+		const tool = this.#tools.getToolForEvalBridge("powershell");
+		if (!tool) throw new Error("PowerShell is unavailable: no pwsh executable was found");
+		const abortController = new AbortController();
+		this.#powerShellAborts.add(abortController);
+		let output = "";
+		let exitCode: number | undefined;
+		let cancelled = false;
+		try {
+			const result = (await tool.execute("prompt-powershell", { command }, abortController.signal)) as {
+				content?: (TextContent | ImageContent)[];
+				text?: string;
+				details?: { exitCode?: number };
+				isError?: boolean;
+			};
+			// The eval bridge normalizes tool results to `{ text }`; the raw tool returns content blocks.
+			output = result.content
+				? result.content.map(block => (block.type === "text" ? block.text : "")).join("")
+				: (result.text ?? "");
+			exitCode = result.details?.exitCode;
+			if (result.isError && exitCode === undefined) exitCode = 1;
+		} catch (error) {
+			if (!abortController.signal.aborted) throw error;
+			cancelled = true;
+		} finally {
+			this.#powerShellAborts.delete(abortController);
+		}
+		const lines = output === "" ? 0 : output.split("\n").length;
+		const summary: BashResult = {
+			output,
+			truncated: false,
+			totalLines: lines,
+			totalBytes: output.length,
+			outputLines: lines,
+			outputBytes: output.length,
+			exitCode,
+			cancelled,
+		};
+		onChunk?.(output);
+		this.#bash.recordBashResult(command, summary, {
+			excludeFromContext: options?.excludeFromContext,
+			shell: "pwsh",
+			onRecorded: options?.onRecorded,
+		});
+		return summary;
+	}
+
+	/** Cancels every running `%`/`%%` PowerShell command. */
+	abortPowerShell(): void {
+		for (const abortController of this.#powerShellAborts) abortController.abort();
+	}
+
+	/** Whether a `%`/`%%` PowerShell command is currently running. */
+	get isPowerShellRunning(): boolean {
+		return this.#powerShellAborts.size > 0;
 	}
 
 	/** Cancel running bash commands. */

@@ -49,6 +49,11 @@
 - Added `repairHeredocContinuations(script)` to repair supported shell here-document continuations.
 - Added `commitReconciled()` for publishing private-index commits safely when the shared index is locked.
 - Added transcript analysis APIs—`transcriptCalls()`, `transcriptGrep()`, `transcriptStats()`, and `transcriptMessages()`—for inspecting tool calls, reasoning, message content, matches, and call statistics across session transcripts.
+- Added `truncateToTokens(input, maxTokens)`: the UTF-16 length of the longest prefix of `input` within `maxTokens` `Jev` tokens, never ending on half a surrogate pair; pieces after the one that crosses the budget are not merged ([#20384](https://github.com/can1357/oh-my-pi/pull/20384) by [@iliaal](https://github.com/iliaal))
+- Added `repairHeredocContinuations(script)`: drops the `\` after `<<EOF &&` (or `||`, `|`, `|&`) so the here-document body starts on the next line, or returns `null`
+- Added `commitReconciled()` to publish private-index commits without leaving staged reversals when the shared index is locked ([#20252](https://github.com/can1357/oh-my-pi/issues/20252)).
+- Added `transcriptCalls()`, `transcriptGrep()`, `transcriptStats()`, and `transcriptMessages()`: parallel scans of session transcript files for tool calls with their results and reasoning, regex matches over message text, thinking, arguments, and results, call counts, and one transcript's records.
+- Added `PsHost`, a persistent PowerShell host sidecar with a shared runspace, streamed output, cancellation, and graceful process-tree shutdown. The sidecar never inherits `PSModulePath` from its parent process — never the bash-tainted value a parent Git Bash/WSL/MSYS shell left behind — resetting it instead to the true OS-persisted value: on Windows, the Machine and User `PSModulePath` read straight from the registry (the same two sources Windows merges for any normally spawned process); elsewhere, or when neither registry value is set, the variable is left unset so pwsh rebuilds its own default module search path at startup. The host runs on PowerShell 5.1+, so Windows PowerShell (`powershell.exe`) works as `powershell.shellPath`, not only `pwsh` ([#13233](https://github.com/can1357/oh-my-pi/pull/13233) by [@HeyItsGilbert](https://github.com/HeyItsGilbert))
 
 ### Changed
 

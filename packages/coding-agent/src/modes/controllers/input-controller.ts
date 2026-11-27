@@ -223,6 +223,26 @@ function parsePythonCommandInput(text: string): { code: string; isExcluded: bool
 	return { code, isExcluded: prefixLength === 2 };
 }
 
+/**
+ * Length of the `%`/`%%` PowerShell sigil, or 0 when the draft is not PowerShell. Like the
+ * `$` sigil, it counts only once whitespace follows, so prose such as `%d` stays prose.
+ */
+function powerShellCommandPrefixLength(trimmedText: string): 0 | 1 | 2 {
+	if (trimmedText.charCodeAt(0) !== 37 /* % */) return 0;
+	const prefixLength = trimmedText.charCodeAt(1) === 37 /* % */ ? 2 : 1;
+	const next = trimmedText.charCodeAt(prefixLength);
+	return next === 32 || next === 9 || next === 10 || next === 13 ? prefixLength : 0;
+}
+
+function parsePowerShellCommandInput(text: string): { code: string; isExcluded: boolean } | undefined {
+	const trimmed = text.trimStart();
+	const prefixLength = powerShellCommandPrefixLength(trimmed);
+	if (prefixLength === 0) return undefined;
+	const code = trimmed.slice(prefixLength).trim();
+	if (prefixLength === 1 && looksLikePastedShellPrompt(code)) return undefined;
+	return { code, isExcluded: prefixLength === 2 };
+}
+
 /** Wrap pasted text in `<attachment>` tags so the model treats it as one quoted block. */
 function wrapPasteInAttachmentBlock(content: string): string {
 	return `<attachment>\n${content}\n</attachment>`;
@@ -947,14 +967,17 @@ export class InputController {
 		const wasBashMode = this.ctx.isBashMode;
 		const wasPythonMode = this.ctx.isPythonMode;
 		const wasBtwMode = this.ctx.isBtwMode;
+		const wasPowerShellMode = this.ctx.isPowerShellMode;
 		const trimmed = text.trimStart();
 		this.ctx.isBashMode = trimmed.startsWith("!");
 		this.ctx.isPythonMode = parsePythonCommandInput(trimmed) !== undefined;
 		this.ctx.isBtwMode = parseBtwShortcutInput(trimmed) !== undefined;
+		this.ctx.isPowerShellMode = parsePowerShellCommandInput(trimmed) !== undefined;
 		if (
 			wasBashMode !== this.ctx.isBashMode ||
 			wasPythonMode !== this.ctx.isPythonMode ||
-			wasBtwMode !== this.ctx.isBtwMode
+			wasBtwMode !== this.ctx.isBtwMode ||
+			wasPowerShellMode !== this.ctx.isPowerShellMode
 		) {
 			this.ctx.updateEditorBorderColor();
 		}
@@ -1158,7 +1181,8 @@ export class InputController {
 				this.ctx.isBtwFocused &&
 				!text.startsWith("/") &&
 				!text.startsWith("!") &&
-				parsePythonCommandInput(text) === undefined
+				parsePythonCommandInput(text) === undefined &&
+				parsePowerShellCommandInput(text) === undefined
 			) {
 				if (text) await this.#submitBtwFollowUp(text);
 				return;
@@ -1313,7 +1337,7 @@ export class InputController {
 					this.ctx.composer.setText("");
 					return;
 				}
-				if (text.startsWith("!") || parsePythonCommandInput(text)) {
+				if (text.startsWith("!") || parsePythonCommandInput(text) || parsePowerShellCommandInput(text)) {
 					this.ctx.showStatus("Local execution is host-only during a collab session");
 					this.ctx.composer.setText("");
 					return;
@@ -1405,6 +1429,26 @@ export class InputController {
 					this.ctx.composer.addToHistory(text);
 					await this.ctx.handlePythonCommand(code, isExcluded);
 					this.ctx.isPythonMode = false;
+					this.ctx.updateEditorBorderColor();
+					return;
+				}
+			}
+
+			// Handle PowerShell command (`% <command>` for normal, `%% <command>` for excluded from context).
+			const powerShellCommand = parsePowerShellCommandInput(text);
+			if (powerShellCommand) {
+				const { code, isExcluded } = powerShellCommand;
+				if (code) {
+					if (this.ctx.session.isPowerShellRunning) {
+						this.ctx.showWarning(
+							`A PowerShell execution is already running. Press ${actionKey("app.interrupt", this.ctx.keybindings)} to cancel it first.`,
+						);
+						this.ctx.composer.setText(text);
+						return;
+					}
+					this.ctx.composer.addToHistory(text);
+					await this.ctx.handlePowerShellCommand(code, isExcluded);
+					this.ctx.isPowerShellMode = false;
 					this.ctx.updateEditorBorderColor();
 					return;
 				}
@@ -1746,7 +1790,13 @@ export class InputController {
 		) {
 			return;
 		}
-		if (text && (text.startsWith("/") || text.startsWith("!") || parsePythonCommandInput(text))) {
+		if (
+			text &&
+			(text.startsWith("/") ||
+				text.startsWith("!") ||
+				parsePythonCommandInput(text) ||
+				parsePowerShellCommandInput(text))
+		) {
 			this.ctx.showStatus(
 				`Only ${FOCUSED_VIEW_COMMAND_LIST} run here; other commands run in the main session — press ${formatDoubleTap("left")} to return first`,
 			);

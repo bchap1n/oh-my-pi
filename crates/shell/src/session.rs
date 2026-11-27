@@ -740,7 +740,7 @@ impl Session {
 		let (reply_tx, reply_rx) = flume::bounded(1);
 		let job = Job { options, stdio, cancel: Arc::clone(&level), reply: reply_tx };
 		jobs
-			.send(Request::Run(job))
+			.send(Request::Run(Box::new(job)))
 			.map_err(|_| SessionError::Closed)?;
 		self.waker.wake_by_ref();
 		let mut guard = CancelOnDrop { level: &level, waker: &self.waker, armed: true };
@@ -840,7 +840,7 @@ impl Drop for CancelOnDrop<'_> {
 /// What the driver is asked to do.
 enum Request {
 	/// Run a command.
-	Run(Job),
+	Run(Box<Job>),
 	/// Count the background jobs running an external.
 	LiveJobs(flume::Sender<usize>),
 }
@@ -875,7 +875,7 @@ impl Driver {
 			// Adopted fork changes land before any request that follows them.
 			self.image.publish_adopted(&mut self.store);
 			match self.jobs.try_recv() {
-				Ok(Request::Run(job)) => self.run(job).await,
+				Ok(Request::Run(job)) => self.run(*job).await,
 				Ok(Request::LiveJobs(reply)) => {
 					let _ = reply.send(self.shell.live_external_jobs(&mut self.store));
 				},

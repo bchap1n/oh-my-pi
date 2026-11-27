@@ -2086,6 +2086,35 @@ export class CommandController {
 		this.ctx.statusLine.refreshVcs();
 	}
 
+	async handlePowerShellCommand(command: string, excludeFromContext = false): Promise<void> {
+		const isDeferred = this.ctx.session.isStreaming;
+		const run = new ExecRun({ kind: "bash", source: command, excluded: excludeFromContext });
+		run.setExpanded(this.ctx.toolOutputExpanded);
+		this.ctx.bashRun = run;
+		// Provisional until the session records the run.
+		const presentation = this.ctx.presentExecRun(run, { deferred: isDeferred });
+
+		try {
+			const result = await this.ctx.session.executePowerShell(command, chunk => run.appendOutput(chunk), {
+				excludeFromContext,
+				onRecorded: message => presentation.record(message),
+			});
+			const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
+			run.setComplete(result.exitCode, result.cancelled, {
+				output: result.output,
+				truncation: meta?.truncation,
+				artifactError: meta?.artifactError,
+			});
+		} catch (error) {
+			run.setComplete(undefined, false);
+			this.ctx.showError(`PowerShell execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+		}
+
+		if (this.ctx.bashRun === run) this.ctx.bashRun = undefined;
+		// The recorded cell is context now: the context meter counts it.
+		this.ctx.statusLine.refresh();
+	}
+
 	async handleCompactCommand(
 		customInstructions?: string,
 		mode?: CompactMode,

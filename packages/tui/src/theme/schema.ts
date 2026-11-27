@@ -26,6 +26,8 @@ export const FOREGROUND_KEYS = [
 	"customMessageLabel",
 	"toolTitle",
 	"toolOutput",
+	"toolPowerShell",
+	"toolWindowsPowerShell",
 	"mdHeading",
 	"mdLink",
 	"mdExtensionLink",
@@ -122,6 +124,8 @@ export const OPTIONAL_KEYS: Readonly<Record<string, true>> = {
 	subagent4: true,
 	subagent5: true,
 	subagent6: true,
+	toolPowerShell: true,
+	toolWindowsPowerShell: true,
 };
 
 export type SymbolPreset = "unicode" | "nerd" | "ascii";
