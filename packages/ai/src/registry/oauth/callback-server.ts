@@ -720,7 +720,7 @@ export abstract class OAuthCallbackFlow {
 								});
 							}
 							if (!parsed.code) return null;
-if (expectedState && parsed.state && !stateMatches(parsed.state, expectedState)) return null;
+							if (expectedState && parsed.state && !stateMatches(parsed.state, expectedState)) return null;
 							// A pasted redirect URL (or bare query string) carries the
 							// same RFC 9207 `iss` exposure as the loopback callback -
 							// run the same guard (a bare pasted code has nothing to
