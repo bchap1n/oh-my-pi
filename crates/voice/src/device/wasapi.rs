@@ -261,6 +261,9 @@ impl Drop for ComApartment {
 	}
 }
 
+// `device` and `enumerator` are held for their lifetime side effects: keeping
+// the COM pointers alive for as long as the stream is open.
+#[allow(dead_code, reason = "COM pointers held for their lifetime side effects")]
 struct BaseStream {
 	client:      ComPtr<AudioClientVtable>,
 	_device:     ComPtr<MmDeviceVtable>,

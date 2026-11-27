@@ -11,7 +11,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { IpcConnection, spawnBreakaway } from "@oh-my-pi/pi-natives";
-import { isEexist, isEnoent, isPidAlive, logger, postmortem, toError } from "@oh-my-pi/pi-utils";
+import { isEexist, isEnoent, isPidAlive, logger, postmortem, removeWithRetries, toError } from "@oh-my-pi/pi-utils";
 import { resolveCliEntryCmd, resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBuildId } from "./build";
 import { canonicalProjectDir, daemonDir, daemonEndpoint, daemonTcpAddress, daemonTokenPath } from "./paths";
@@ -1223,7 +1223,7 @@ export async function isolateDaemonForSmokeTest(): Promise<() => Promise<void>> 
 			else process.env[DAEMON_DIR_ENV] = previousDir;
 			if (previousTcp !== undefined) process.env[DAEMON_TCP_ENV] = previousTcp;
 		}
-		await fs.rm(root, { recursive: true, force: true });
+		await removeWithRetries(root);
 	};
 }
 
